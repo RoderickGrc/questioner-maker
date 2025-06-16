@@ -1,0 +1,6 @@
+{
+  "name": "Generador CSV de Preguntas con Gemini",
+  "description": "Una aplicación para generar archivos CSV de preguntas para la plataforma 'Questioner Base' utilizando Gemini. Permite cargar contexto, gestionar una cola de solicitudes de generación y exportar el resultado.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
