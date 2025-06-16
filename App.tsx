@@ -1366,7 +1366,7 @@ const App: React.FC = () => {
                         {logEntries.map(log => (
                         <li key={log.id} className={`py-1 border-b border-neutral-800 last:border-b-0 ${getLogColor(log.type)}`}>
                             <span className="font-semibold">{log.timestamp.toLocaleTimeString(undefined, LOG_TIMESTAMP_FORMAT)}</span> [{log.type.toUpperCase()}]: {log.message}
-                            {log.details && (typeof log.details === 'string' || typeof log.details === 'number') && <span className="block pl-4 text-neutral-400 text-opacity-80"> > {String(log.details).substring(0,300)}{String(log.details).length > 300 ? '...' : ''}</span>}
+                            {log.details && (typeof log.details === 'string' || typeof log.details === 'number') && <span className="block pl-4 text-neutral-400 text-opacity-80">{'>'}{String(log.details).substring(0,300)}{String(log.details).length > 300 ? '...' : ''}</span>}
                             {log.details && typeof log.details === 'object' && (
                                 <details className="pl-4 mt-1 text-neutral-400 text-opacity-80">
                                     <summary className="cursor-pointer text-xs hover:text-neutral-300">Ver detalles...</summary>
