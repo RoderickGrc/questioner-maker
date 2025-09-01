@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+﻿import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { QuestionData, GenerationRequest, RequestStatus, CSV_HEADERS, GeneralContextFilePreview, LogEntry, LogType, CSV_HEADER_TO_QUESTION_DATA_KEY_MAP, QuestionDisplayType, QuestionTypeVisualInfo, ThinkingIntensity } from './types';
 import { APP_TITLE, MAX_OVERALL_REQUEST_ATTEMPTS, LOG_TIMESTAMP_FORMAT, ANIMATION_DEBOUNCE_TIME, REWRITE_QUESTIONS_FILENAME } from './constants';
 import { generateQuestionsFromGemini, generateCollectionTitleFromGemini, generateMetadataFromGemini } from './services/geminiService';
@@ -20,12 +20,12 @@ const isFieldEmpty = (value?: string): boolean => value === undefined || value =
 // Function to determine question type and get visual info
 const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => {
   const p = question.Pregunta;
-  const c1 = question['Opción correcta 1'];
-  const c2 = question['Opción Correcta 2'];
-  const c3 = question['Opción Correcta 3'];
-  const i1 = question['Opción Incorrecta 1'];
-  const i2 = question['Opción Incorrecta 2'];
-  const i3 = question['Opción Incorrecta 3'];
+  const c1 = question['OpciÃ³n correcta 1'];
+  const c2 = question['OpciÃ³n Correcta 2'];
+  const c3 = question['OpciÃ³n Correcta 3'];
+  const i1 = question['OpciÃ³n Incorrecta 1'];
+  const i2 = question['OpciÃ³n Incorrecta 2'];
+  const i3 = question['OpciÃ³n Incorrecta 3'];
 
   const hasC1 = !isFieldEmpty(c1);
   const hasC2 = !isFieldEmpty(c2);
@@ -41,9 +41,9 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     return {
       type: QuestionDisplayType.Empty,
       icon: <MinusCircleIcon className="w-5 h-5 text-slate-400" />,
-      label: "Vacía",
+      label: "VacÃ­a",
       colorClass: "text-slate-400",
-      description: "Pregunta Vacía: El campo 'Pregunta' está vacío. Estas preguntas serán ignoradas al guardar el CSV."
+      description: "Pregunta VacÃ­a: El campo 'Pregunta' estÃ¡ vacÃ­o. Estas preguntas serÃ¡n ignoradas al guardar el CSV."
     };
   }
 
@@ -54,7 +54,7 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
       icon: <TextLinesIcon className="w-5 h-5 text-sky-400" />,
       label: "Abierta",
       colorClass: "text-sky-400",
-      description: "Respuesta Abierta: Solo 'Opción correcta 1' tiene valor. Todas las demás opciones deben estar vacías."
+      description: "Respuesta Abierta: Solo 'OpciÃ³n correcta 1' tiene valor. Todas las demÃ¡s opciones deben estar vacÃ­as."
     };
   }
 
@@ -65,7 +65,7 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
       icon: <AcademicCapIcon className="w-5 h-5 text-cyan-400" />,
       label: "Flashcard",
       colorClass: "text-cyan-400",
-      description: "Flashcard: Solo 'Opción Correcta 2' tiene valor. Ideal para respuestas largas de desarrollo o conceptos. El resto de opciones debe estar vacío."
+      description: "Flashcard: Solo 'OpciÃ³n Correcta 2' tiene valor. Ideal para respuestas largas de desarrollo o conceptos. El resto de opciones debe estar vacÃ­o."
     };
   }
 
@@ -76,7 +76,7 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
       icon: <ArrowsRightLeftIcon className="w-5 h-5 text-lime-400" />,
       label: "V/F",
       colorClass: "text-lime-400",
-      description: "Verdadero/Falso: 'Opción correcta 1' y 'Opción Incorrecta 1' tienen valor. Las demás opciones deben estar vacías."
+      description: "Verdadero/Falso: 'OpciÃ³n correcta 1' y 'OpciÃ³n Incorrecta 1' tienen valor. Las demÃ¡s opciones deben estar vacÃ­as."
     };
   }
 
@@ -85,9 +85,9 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     return {
       type: QuestionDisplayType.MultipleCorrect,
       icon: <CheckListIcon className="w-5 h-5 text-amber-400" />,
-      label: "Múltiple",
+      label: "MÃºltiple",
       colorClass: "text-amber-400",
-      description: "Opción Múltiple (Varias Correctas): 'Opción correcta 1' y al menos una de 'Opción Correcta 2/3' tienen valor. Mínimo 1 incorrecta."
+      description: "OpciÃ³n MÃºltiple (Varias Correctas): 'OpciÃ³n correcta 1' y al menos una de 'OpciÃ³n Correcta 2/3' tienen valor. MÃ­nimo 1 incorrecta."
     };
   }
 
@@ -96,9 +96,9 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     return {
       type: QuestionDisplayType.SingleCorrect,
       icon: <CircleDotIcon className="w-5 h-5 text-fuchsia-400" />,
-      label: "Única",
+      label: "Ãšnica",
       colorClass: "text-fuchsia-400",
-      description: "Selección Única: Solo 'Opción correcta 1' tiene valor. Mínimo 2 opciones incorrectas."
+      description: "SelecciÃ³n Ãšnica: Solo 'OpciÃ³n correcta 1' tiene valor. MÃ­nimo 2 opciones incorrectas."
     };
   }
   
@@ -107,7 +107,7 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     icon: <QuestionMarkCircleIcon className="w-5 h-5 text-red-500" />, // Changed color to red for more emphasis
     label: "Desc.",
     colorClass: "text-red-500",
-    description: "Tipo Desconocido: La estructura de la pregunta no coincide con los tipos definidos. Esta pregunta NO se guardará en el CSV hasta que se corrija."
+    description: "Tipo Desconocido: La estructura de la pregunta no coincide con los tipos definidos. Esta pregunta NO se guardarÃ¡ en el CSV hasta que se corrija."
   };
 };
 
@@ -132,7 +132,7 @@ const RequestStatusDisplay: React.FC<{ req: GenerationRequest }> = ({ req }) => 
     if (req.jsonCorrectionAttempts && req.jsonCorrectionAttempts > 0) {
       elements.push(
         <p key="error-corrections" className="text-xs mt-1 text-yellow-400">
-          Falló tras {req.jsonCorrectionAttempts} correcciones JSON de Gemini.
+          FallÃ³ tras {req.jsonCorrectionAttempts} correcciones JSON de Gemini.
         </p>
       );
     }
@@ -220,16 +220,16 @@ const App: React.FC = () => {
     if (storedKey) {
         addLogEntry(LogType.Info, "Clave API de usuario cargada desde localStorage.");
     } else {
-        addLogEntry(LogType.Info, "No se encontró clave API de usuario en localStorage, se usará la del entorno si está disponible.");
+        addLogEntry(LogType.Info, "No se encontrÃ³ clave API de usuario en localStorage, se usarÃ¡ la del entorno si estÃ¡ disponible.");
     }
 
-    addLogEntry(LogType.System, `Aplicación iniciada.`);
+    addLogEntry(LogType.System, `AplicaciÃ³n iniciada.`);
     if (!process.env.API_KEY && !storedKey) {
-      const errorMsg = "ADVERTENCIA: API_KEY no está configurada en el entorno y no se ha proporcionado una clave local. La aplicación podría no funcionar.";
+      const errorMsg = "ADVERTENCIA: API_KEY no estÃ¡ configurada en el entorno y no se ha proporcionado una clave local. La aplicaciÃ³n podrÃ­a no funcionar.";
       setGlobalError(errorMsg); 
       addLogEntry(LogType.Warning, errorMsg);
     } else if (process.env.API_KEY && !storedKey) {
-      addLogEntry(LogType.Info, "API_KEY del entorno está disponible.");
+      addLogEntry(LogType.Info, "API_KEY del entorno estÃ¡ disponible.");
     }
   }, [addLogEntry]);
 
@@ -370,7 +370,7 @@ const App: React.FC = () => {
       if (!needsTitle && !needsOtherMeta) return;
 
       setIsGeneratingMetadata(true);
-      addLogEntry(LogType.Info, "Iniciando generación de metadatos con IA...");
+      addLogEntry(LogType.Info, "Iniciando generaciÃ³n de metadatos con IA...");
 
       const sampleQuestionsText = generatedQuestions
           .slice(-10) // Sample of last 10 questions
@@ -402,15 +402,15 @@ const App: React.FC = () => {
           
           if (needsTitle && typeof titleResult === 'string') {
               setCollectionTitle(titleResult);
-              addLogEntry(LogType.Info, `Título de colección generado: "${titleResult}"`);
+              addLogEntry(LogType.Info, `TÃ­tulo de colecciÃ³n generado: "${titleResult}"`);
           }
           if (needsOtherMeta && metadataResult) {
               setAsignatura(metadataResult.asignatura);
               setDescripcion(metadataResult.descripcion);
-              addLogEntry(LogType.Info, `Metadatos generados: Asignatura="${metadataResult.asignatura}", Descripción="${metadataResult.descripcion.substring(0, 50)}..."`);
+              addLogEntry(LogType.Info, `Metadatos generados: Asignatura="${metadataResult.asignatura}", DescripciÃ³n="${metadataResult.descripcion.substring(0, 50)}..."`);
           }
       } catch (error: any) {
-          addLogEntry(LogType.Error, "Error durante la generación de metadatos.", { error: error.message });
+          addLogEntry(LogType.Error, "Error durante la generaciÃ³n de metadatos.", { error: error.message });
       } finally {
           setIsGeneratingMetadata(false);
       }
@@ -446,7 +446,7 @@ const App: React.FC = () => {
     } else {
       localStorage.removeItem(LOCAL_STORAGE_API_KEY);
       setCurrentStoredUserApiKey(null);
-      addLogEntry(LogType.Info, "Clave API de usuario eliminada de localStorage. Se usará la del entorno.");
+      addLogEntry(LogType.Info, "Clave API de usuario eliminada de localStorage. Se usarÃ¡ la del entorno.");
     }
     setShowConfigModal(false);
   };
@@ -455,11 +455,11 @@ const App: React.FC = () => {
     localStorage.removeItem(LOCAL_STORAGE_API_KEY);
     setCurrentStoredUserApiKey(null);
     setUserApiKeyInput('');
-    addLogEntry(LogType.Info, "Configuración de API Key restablecida. Se usará la del entorno.");
+    addLogEntry(LogType.Info, "Inteligencia Artificial de API Key restablecida. Se usarÃ¡ la del entorno.");
   };
 
   const intensityMapping = [ThinkingIntensity.Fast, ThinkingIntensity.Medium, ThinkingIntensity.High, ThinkingIntensity.VeryHigh];
-  const intensityLabels = ["Rápido", "Medio", "Alto", "Muy Alto"];
+  const intensityLabels = ["RÃ¡pido", "Medio", "Alto", "Muy Alto"];
 
   const handleIntensityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = parseInt(e.target.value, 10);
@@ -480,7 +480,7 @@ const App: React.FC = () => {
       thinkingIntensity: thinkingIntensity,
     };
     setRequests(prev => [...prev, newReq]);
-    addLogEntry(LogType.Info, "Nueva solicitud añadida a la cola.", { prompt: newRequestPrompt, files: newRequestFiles.map(f => f.name) });
+    addLogEntry(LogType.Info, "Nueva solicitud aÃ±adida a la cola.", { prompt: newRequestPrompt, files: newRequestFiles.map(f => f.name) });
     setNewRequestPrompt('');
     setNewRequestFiles([]);
     if (requestFilePickerRef.current) {
@@ -505,7 +505,7 @@ const App: React.FC = () => {
       setNewRequestFiles(requestToEdit.requestFiles || []);
       setThinkingIntensity(requestToEdit.thinkingIntensity);
       setRequests(prevReqs => prevReqs.filter(req => req.id !== id));
-      addLogEntry(LogType.Info, `Solicitud "${requestToEdit.prompt.substring(0,30)}..." movida a edición.`);
+      addLogEntry(LogType.Info, `Solicitud "${requestToEdit.prompt.substring(0,30)}..." movida a ediciÃ³n.`);
       const promptInput = newRequestAreaRef.current?.querySelector('textarea');
       promptInput?.focus();
     }
@@ -616,7 +616,7 @@ const App: React.FC = () => {
   const processQueue = useCallback(async () => {
     const apiKey = getEffectiveApiKey();
     if (!apiKey) {
-        const errorMsg = "Error Crítico: No se pudo determinar la API_KEY de Gemini. Configure una clave en el entorno o a través de la configuración de la aplicación.";
+        const errorMsg = "Error CrÃ­tico: No se pudo determinar la API_KEY de Gemini. Configure una clave en el entorno o a travÃ©s de la Inteligencia Artificial de la aplicaciÃ³n.";
         setGlobalError(errorMsg);
         addLogEntry(LogType.Error, errorMsg);
         setIsProcessing(false);
@@ -674,7 +674,7 @@ const App: React.FC = () => {
                   const rewrittenVersion = questionsFromCurrentGeminiCall.find(nq => nq.id === existingQ.id);
                   if (rewrittenVersion) {
                       processedIdsFromGemini.add(rewrittenVersion.id);
-                      addLogEntry(LogType.Info, `Pregunta ID ${existingQ.id} reemplazada por versión reescrita.`, {original: existingQ.Pregunta.substring(0,50), new: rewrittenVersion.Pregunta.substring(0,50)});
+                      addLogEntry(LogType.Info, `Pregunta ID ${existingQ.id} reemplazada por versiÃ³n reescrita.`, {original: existingQ.Pregunta.substring(0,50), new: rewrittenVersion.Pregunta.substring(0,50)});
                       return rewrittenVersion; 
                   }
                   return existingQ; 
@@ -687,11 +687,11 @@ const App: React.FC = () => {
                       const alreadyExists = updatedList.some(uq => uq.id === nq.id);
                       if (!alreadyExists) {
                         updatedList.push(nq);
-                        addLogEntry(LogType.Info, `Nueva pregunta ID ${nq.id} añadida.`, {pregunta: nq.Pregunta.substring(0,50)});
+                        addLogEntry(LogType.Info, `Nueva pregunta ID ${nq.id} aÃ±adida.`, {pregunta: nq.Pregunta.substring(0,50)});
                       } else {
                         // This case should be rare if IDs are unique 'gen-' or original from rewrite.
                         // Could happen if Gemini re-uses an ID from a previous rewrite request that was deleted locally.
-                        addLogEntry(LogType.Warning, `Pregunta ID ${nq.id} de Gemini ya existe, posible duplicado o ID no único.`, {pregunta: nq.Pregunta.substring(0,50)});
+                        addLogEntry(LogType.Warning, `Pregunta ID ${nq.id} de Gemini ya existe, posible duplicado o ID no Ãºnico.`, {pregunta: nq.Pregunta.substring(0,50)});
                       }
                   }
               });
@@ -700,7 +700,7 @@ const App: React.FC = () => {
           
           totalJsonCorrectionAttemptsForThisRequest = jsonCorrectionAttempts;
           setRequests(prevReqs => prevReqs.map(r => r.id === currentRequest.id ? { ...r, status: RequestStatus.Completed, errorDetails: undefined, jsonCorrectionAttempts: totalJsonCorrectionAttemptsForThisRequest, questionsGeneratedCount: newQsFromGemini.length } : r));
-          addLogEntry(LogType.Info, `Solicitud "${currentRequest.prompt.substring(0,30)}..." completada con éxito. ${newQsFromGemini.length} objetos de pregunta recibidos de Gemini (reescritos y/o nuevos).`, { requestId: currentRequest.id, questionsReturnedByGemini: newQsFromGemini.length, jsonCorrectionAttempts });
+          addLogEntry(LogType.Info, `Solicitud "${currentRequest.prompt.substring(0,30)}..." completada con Ã©xito. ${newQsFromGemini.length} objetos de pregunta recibidos de Gemini (reescritos y/o nuevos).`, { requestId: currentRequest.id, questionsReturnedByGemini: newQsFromGemini.length, jsonCorrectionAttempts });
           successInRequest = true;
 
         } catch (error: any) {
@@ -753,8 +753,8 @@ const App: React.FC = () => {
 
 
     if (questionsToSave.length === 0) {
-        const errorMsg = "No hay preguntas válidas para guardar. Asegúrate de que no todas estén vacías o marcadas como desconocidas.";
-        addLogEntry(LogType.Info, "Intento de guardar, pero no hay preguntas válidas para exportar.", { format });
+        const errorMsg = "No hay preguntas vÃ¡lidas para guardar. AsegÃºrate de que no todas estÃ©n vacÃ­as o marcadas como desconocidas.";
+        addLogEntry(LogType.Info, "Intento de guardar, pero no hay preguntas vÃ¡lidas para exportar.", { format });
         setGlobalError(errorMsg);
         return;
     }
@@ -851,8 +851,8 @@ const App: React.FC = () => {
         reader.onload = (e) => {
             const text = e.target?.result as string;
             if (!text) {
-                const errorMsg = `Error: El archivo ${file.name} está vacío o no se pudo leer.`;
-                addLogEntry(LogType.Error, "Error al leer el archivo: contenido vacío.", {fileName: file.name});
+                const errorMsg = `Error: El archivo ${file.name} estÃ¡ vacÃ­o o no se pudo leer.`;
+                addLogEntry(LogType.Error, "Error al leer el archivo: contenido vacÃ­o.", {fileName: file.name});
                 setGlobalError(errorMsg);
                 return;
             }
@@ -861,7 +861,7 @@ const App: React.FC = () => {
                 if (fileNameLower.endsWith('.csv')) {
                     addLogEntry(LogType.FileProcessing, `Intentando cargar CSV: ${file.name}`);
                     const lines = text.split(/\r\n|\n/);
-                    if (lines.length < 2) throw new Error("Archivo CSV inválido: debe tener al menos una cabecera y una fila de datos.");
+                    if (lines.length < 2) throw new Error("Archivo CSV invÃ¡lido: debe tener al menos una cabecera y una fila de datos.");
                     
                     const headerLine = lines[0];
                     const parsedHeader = parseCsvLineRobust(headerLine);
@@ -874,7 +874,7 @@ const App: React.FC = () => {
                         if (lines[i].trim() === '') continue;
                         const fields = parseCsvLineRobust(lines[i]);
                         if (fields.length !== CSV_HEADERS.length) {
-                            addLogEntry(LogType.Warning, `Fila ${i+1} del CSV omitida: número incorrecto de columnas.`, {fileName: file.name});
+                            addLogEntry(LogType.Warning, `Fila ${i+1} del CSV omitida: nÃºmero incorrecto de columnas.`, {fileName: file.name});
                             skippedRows++;
                             continue;
                         }
@@ -892,19 +892,19 @@ const App: React.FC = () => {
                     addLogEntry(LogType.FileProcessing, `Intentando cargar JSON: ${file.name}`);
                     const data = JSON.parse(text);
 
-                    if (typeof data !== 'object' || data === null) throw new Error("El archivo JSON no contiene un objeto válido.");
+                    if (typeof data !== 'object' || data === null) throw new Error("El archivo JSON no contiene un objeto vÃ¡lido.");
                     
-                    if (typeof data["Nombre de Colección"] === 'string') {
-                        setCollectionTitle(data["Nombre de Colección"]);
+                    if (typeof data["Nombre de ColecciÃ³n"] === 'string') {
+                        setCollectionTitle(data["Nombre de ColecciÃ³n"]);
                     }
                     if (typeof data["Asignatura"] === 'string') {
                         setAsignatura(data["Asignatura"]);
                     }
-                    if (typeof data["Categoría"] === 'string') {
-                        setCategoria(data["Categoría"]);
+                    if (typeof data["CategorÃ­a"] === 'string') {
+                        setCategoria(data["CategorÃ­a"]);
                     }
-                    if (typeof data["Descripción"] === 'string') {
-                        setDescripcion(data["Descripción"]);
+                    if (typeof data["DescripciÃ³n"] === 'string') {
+                        setDescripcion(data["DescripciÃ³n"]);
                     }
                     addLogEntry(LogType.Info, `Metadatos importados desde JSON.`);
 
@@ -920,13 +920,13 @@ const App: React.FC = () => {
                         newQuestions.push({
                             id: `json-import-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
                             Pregunta: item.Pregunta,
-                            'Opción correcta 1': String(item['Opción correcta 1'] ?? ''),
-                            'Opción Correcta 2': item['Opción Correcta 2'] || undefined,
-                            'Opción Correcta 3': item['Opción Correcta 3'] || undefined,
-                            'Opción Incorrecta 1': item['Opción Incorrecta 1'] || undefined,
-                            'Opción Incorrecta 2': item['Opción Incorrecta 2'] || undefined,
-                            'Opción Incorrecta 3': item['Opción Incorrecta 3'] || undefined,
-                            Explicación: item.Explicación || undefined,
+                            'OpciÃ³n correcta 1': String(item['OpciÃ³n correcta 1'] ?? ''),
+                            'OpciÃ³n Correcta 2': item['OpciÃ³n Correcta 2'] || undefined,
+                            'OpciÃ³n Correcta 3': item['OpciÃ³n Correcta 3'] || undefined,
+                            'OpciÃ³n Incorrecta 1': item['OpciÃ³n Incorrecta 1'] || undefined,
+                            'OpciÃ³n Incorrecta 2': item['OpciÃ³n Incorrecta 2'] || undefined,
+                            'OpciÃ³n Incorrecta 3': item['OpciÃ³n Incorrecta 3'] || undefined,
+                            ExplicaciÃ³n: item.ExplicaciÃ³n || undefined,
                         });
                     }
                     setGeneratedQuestions(prev => [...prev, ...newQuestions]);
@@ -988,16 +988,16 @@ const App: React.FC = () => {
     const newQuestion: QuestionData = {
       id: `manual-${Date.now()}-${Math.random().toString(36).substring(7)}`,
       Pregunta: '', // Will be classified as 'Empty'
-      'Opción correcta 1': '',
-      'Opción Correcta 2': undefined,
-      'Opción Correcta 3': undefined,
-      'Opción Incorrecta 1': undefined,
-      'Opción Incorrecta 2': undefined,
-      'Opción Incorrecta 3': undefined,
-      Explicación: undefined,
+      'OpciÃ³n correcta 1': '',
+      'OpciÃ³n Correcta 2': undefined,
+      'OpciÃ³n Correcta 3': undefined,
+      'OpciÃ³n Incorrecta 1': undefined,
+      'OpciÃ³n Incorrecta 2': undefined,
+      'OpciÃ³n Incorrecta 3': undefined,
+      ExplicaciÃ³n: undefined,
     };
     setGeneratedQuestions(prev => [newQuestion, ...prev]); // Add to top for visibility
-    addLogEntry(LogType.Info, "Nueva fila de pregunta manual añadida a la tabla (inicialmente vacía).");
+    addLogEntry(LogType.Info, "Nueva fila de pregunta manual aÃ±adida a la tabla (inicialmente vacÃ­a).");
     setExpandedQuestionId(newQuestion.id); 
   };
 
@@ -1068,13 +1068,13 @@ const App: React.FC = () => {
     const questionsJsonString = JSON.stringify(questionsToRewrite.map(q => ({
         id: q.id, 
         Pregunta: q.Pregunta,
-        'Opción correcta 1': q['Opción correcta 1'],
-        'Opción Correcta 2': q['Opción Correcta 2'],
-        'Opción Correcta 3': q['Opción Correcta 3'],
-        'Opción Incorrecta 1': q['Opción Incorrecta 1'],
-        'Opción Incorrecta 2': q['Opción Incorrecta 2'],
-        'Opción Incorrecta 3': q['Opción Incorrecta 3'],
-        Explicación: q.Explicación,
+        'OpciÃ³n correcta 1': q['OpciÃ³n correcta 1'],
+        'OpciÃ³n Correcta 2': q['OpciÃ³n Correcta 2'],
+        'OpciÃ³n Correcta 3': q['OpciÃ³n Correcta 3'],
+        'OpciÃ³n Incorrecta 1': q['OpciÃ³n Incorrecta 1'],
+        'OpciÃ³n Incorrecta 2': q['OpciÃ³n Incorrecta 2'],
+        'OpciÃ³n Incorrecta 3': q['OpciÃ³n Incorrecta 3'],
+        ExplicaciÃ³n: q.ExplicaciÃ³n,
     })), null, 2);
     const questionsFile = new File([questionsJsonString], REWRITE_QUESTIONS_FILENAME, { type: "application/json" });
     
@@ -1083,7 +1083,7 @@ const App: React.FC = () => {
         return [questionsFile, ...otherFiles];
     });
     
-    addLogEntry(LogType.Info, `${questionsToRewrite.length} pregunta(s) seleccionada(s) y adjuntada(s) como '${REWRITE_QUESTIONS_FILENAME}'. Por favor, escribe tus instrucciones de reescritura en 'Nueva Solicitud' y añádelo a la cola.`);
+    addLogEntry(LogType.Info, `${questionsToRewrite.length} pregunta(s) seleccionada(s) y adjuntada(s) como '${REWRITE_QUESTIONS_FILENAME}'. Por favor, escribe tus instrucciones de reescritura en 'Nueva Solicitud' y aÃ±Ã¡delo a la cola.`);
     
     setSelectedQuestionIds(new Set());
     setLastSelectedRowId(null);
@@ -1130,8 +1130,8 @@ const App: React.FC = () => {
         <button
             onClick={handleOpenConfigModal}
             className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg transition-colors"
-            title="Configuración"
-            aria-label="Abrir configuración"
+            title="Inteligencia Artificial"
+            aria-label="Abrir Inteligencia Artificial"
         >
             <CogIcon className="w-6 h-6" />
         </button>
@@ -1148,11 +1148,11 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"  aria-modal="true" role="dialog">
           <div className="bg-neutral-800 p-6 rounded-xl shadow-2xl w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold text-neutral-100">Configuración</h2>
+              <h2 className="text-2xl font-semibold text-neutral-100">Inteligencia Artificial</h2>
               <button 
                 onClick={handleCloseConfigModal} 
                 className="p-1 text-neutral-400 hover:text-neutral-100"
-                aria-label="Cerrar modal de configuración"
+                aria-label="Cerrar modal de Inteligencia Artificial"
               >
                 <XMarkIcon className="w-6 h-6" />
               </button>
@@ -1167,11 +1167,11 @@ const App: React.FC = () => {
                 id="apiKeyInput"
                 value={userApiKeyInput}
                 onChange={(e) => setUserApiKeyInput(e.target.value)}
-                placeholder="Pega tu clave API aquí..."
+                placeholder="Pega tu clave API aquÃ­..."
                 className="w-full p-3 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
               />
               <p className="mt-1 text-xs text-neutral-400">
-                Dejar en blanco para usar la clave del entorno. Si se provee, esta clave se usará en lugar de la configurada en el entorno y se guardará localmente en tu navegador.
+                Dejar en blanco para usar la clave del entorno. Si se provee, esta clave se usarÃ¡ en lugar de la configurada en el entorno y se guardarÃ¡ localmente en tu navegador.
               </p>
             </div>
 
@@ -1201,12 +1201,12 @@ const App: React.FC = () => {
             <textarea
               value={generalContextText}
               onChange={(e) => setGeneralContextText(e.target.value)}
-              placeholder="Pega aquí el material de estudio principal (texto, notas, etc.). Este contexto se usará para todas las solicitudes."
+              placeholder="Pega aquÃ­ el material de estudio principal (texto, notas, etc.). Este contexto se usarÃ¡ para todas las solicitudes."
               className="w-full h-32 p-3 bg-neutral-800 border border-neutral-700 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
               disabled={isProcessing}
             />
             <div className="mt-3">
-              <label htmlFor="context-files" className="block text-sm font-medium text-neutral-400 mb-1">Cargar archivos de contexto (opcional, múltiple):</label>
+              <label htmlFor="context-files" className="block text-sm font-medium text-neutral-400 mb-1">Cargar archivos de contexto (opcional, mÃºltiple):</label>
               <input 
                 type="file" 
                 id="context-files"
@@ -1246,7 +1246,7 @@ const App: React.FC = () => {
               <textarea
                 value={newRequestPrompt}
                 onChange={(e) => setNewRequestPrompt(e.target.value)}
-                placeholder="Tema o instrucción específica para un grupo de preguntas (puede ser de varias líneas)"
+                placeholder="Tema o instrucciÃ³n especÃ­fica para un grupo de preguntas (puede ser de varias lÃ­neas)"
                 className="w-full p-3 mb-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100 h-24 resize-y"
                 disabled={isProcessing}
               />
@@ -1313,12 +1313,12 @@ const App: React.FC = () => {
                 disabled={isProcessing || newRequestPrompt.trim() === ''}
                 className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center gap-2 transition-colors disabled:bg-neutral-700 disabled:text-neutral-400 disabled:cursor-not-allowed"
               >
-                <PlusIcon className="w-5 h-5" /> Añadir a Cola
+                <PlusIcon className="w-5 h-5" /> AÃ±adir a Cola
               </button>
             </div>
             
             <div className="mt-3 max-h-60 overflow-y-auto bg-neutral-800 p-3 rounded-md border border-neutral-700 space-y-2">
-              {requests.length === 0 && <p className="text-neutral-400 text-sm italic">La cola está vacía. Añade solicitudes.</p>}
+              {requests.length === 0 && <p className="text-neutral-400 text-sm italic">La cola estÃ¡ vacÃ­a. AÃ±ade solicitudes.</p>}
               {requests.map((req, index) => (
                 <div key={req.id} className="p-3 bg-neutral-700 rounded-md flex items-start gap-2 border border-neutral-600 shadow-sm">
                   <div className="flex flex-col gap-1 mr-2">
@@ -1395,7 +1395,7 @@ const App: React.FC = () => {
               </h2>
               <div className="p-3 bg-neutral-800 border border-neutral-700 rounded-b-md text-xs min-h-[40px]"> {/* Added min-h for consistent height */}
                   {isProcessing && geminiLiveThought && (
-                      <p className="italic text-neutral-300">Gemini está procesando... El stream detallado de la respuesta se muestra en la sección 'Streamming Retornado' más abajo si está activa.</p>
+                      <p className="italic text-neutral-300">Gemini estÃ¡ procesando... El stream detallado de la respuesta se muestra en la secciÃ³n 'Streamming Retornado' mÃ¡s abajo si estÃ¡ activa.</p>
                   )}
                   {isProcessing && !geminiLiveThought && (
                       <p className="italic text-neutral-400">Esperando la primera respuesta de Gemini...</p>
@@ -1433,7 +1433,7 @@ const App: React.FC = () => {
                 >
                   <h3 className="text-base font-semibold text-neutral-100 mb-2 sticky top-0 bg-neutral-900 py-1 z-10 border-b border-neutral-700">Stream de Gemini</h3>
                   {isProcessing && !geminiLiveThought && <p className="italic text-neutral-400">Esperando respuesta de Gemini...</p>}
-                  {geminiLiveThought || (!isProcessing && <p className="italic text-neutral-500">El procesamiento ha finalizado o no está activo. Este es el último stream recibido.</p>)}
+                  {geminiLiveThought || (!isProcessing && <p className="italic text-neutral-500">El procesamiento ha finalizado o no estÃ¡ activo. Este es el Ãºltimo stream recibido.</p>)}
                 </div>
             )}
 
@@ -1450,7 +1450,7 @@ const App: React.FC = () => {
             {showLogs && (
                 <div className="mt-2 p-3 bg-neutral-900 border border-neutral-700 rounded-md max-h-96 overflow-y-auto text-xs shadow" ref={logContainerRef}>
                     <h3 className="text-lg font-semibold text-neutral-100 mb-2 sticky top-0 bg-neutral-900 py-1 z-10 border-b border-neutral-700">Log de Actividad</h3>
-                    {logEntries.length === 0 && <p className="text-neutral-400 italic">No hay entradas en el log todavía.</p>}
+                    {logEntries.length === 0 && <p className="text-neutral-400 italic">No hay entradas en el log todavÃ­a.</p>}
                     <ul>
                         {logEntries.map(log => (
                         <li key={log.id} className={`py-1 border-b border-neutral-800 last:border-b-0 ${getLogColor(log.type)}`}>
@@ -1497,16 +1497,16 @@ const App: React.FC = () => {
                   onClick={handleAddManualQuestion}
                   disabled={isProcessing}
                   className="p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center gap-2 transition-colors disabled:bg-neutral-700 disabled:text-neutral-400 disabled:cursor-not-allowed"
-                  title="Añadir una pregunta manualmente a la tabla"
+                  title="AÃ±adir una pregunta manualmente a la tabla"
                 >
-                  <PlusIcon className="w-5 h-5" /> Añadir Pregunta
+                  <PlusIcon className="w-5 h-5" /> AÃ±adir Pregunta
                 </button>
                 <div className="relative" ref={saveMenuRef}>
                     <button
                         onClick={() => setIsSaveMenuOpen(prev => !prev)}
                         disabled={isProcessing || generatedQuestions.length === 0 || hasUnknownQuestions}
                         className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-2 transition-colors disabled:bg-neutral-700 disabled:text-neutral-400 disabled:cursor-not-allowed"
-                        title={hasUnknownQuestions ? "No se puede guardar: existen preguntas con tipo 'Desconocido'. Por favor, corrígelas." : "Guardar preguntas"}
+                        title={hasUnknownQuestions ? "No se puede guardar: existen preguntas con tipo 'Desconocido'. Por favor, corrÃ­gelas." : "Guardar preguntas"}
                     >
                         <DownloadIcon className="w-5 h-5" /> Guardar
                         <ChevronDownIcon className={`w-4 h-4 transition-transform ${isSaveMenuOpen ? 'rotate-180' : ''}`} />
@@ -1549,7 +1549,7 @@ const App: React.FC = () => {
                         onClick={handleRewriteSelectedQuestions}
                         disabled={isProcessing}
                         className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md flex items-center gap-1.5 transition-colors disabled:bg-neutral-600 disabled:text-neutral-400"
-                        title="Adjuntar preguntas seleccionadas para reescritura. Defina la instrucción en 'Nueva Solicitud'."
+                        title="Adjuntar preguntas seleccionadas para reescritura. Defina la instrucciÃ³n en 'Nueva Solicitud'."
                         >
                         <SparklesIcon className="w-4 h-4" /> Reescribir
                         </button>
@@ -1564,7 +1564,7 @@ const App: React.FC = () => {
                     aria-expanded={isMetadataExpanded}
                     aria-controls="metadata-content"
                 >
-                    <h3 className="text-xl font-semibold text-neutral-200">Metadatos de la Colección</h3>
+                    <h3 className="text-xl font-semibold text-neutral-200">Metadatos de la ColecciÃ³n</h3>
                     {isMetadataExpanded ? <ChevronUpIcon className="w-6 h-6 text-neutral-400" /> : <ChevronDownIcon className="w-6 h-6 text-neutral-400" />}
                 </button>
                 {isMetadataExpanded && (
@@ -1582,14 +1582,14 @@ const App: React.FC = () => {
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label htmlFor="collection-title-input" className="block text-sm font-medium text-neutral-300 mb-1">Nombre de Colección</label>
+                                <label htmlFor="collection-title-input" className="block text-sm font-medium text-neutral-300 mb-1">Nombre de ColecciÃ³n</label>
                                 <div className="relative">
                                     <input
                                         id="collection-title-input"
                                         type="text"
                                         value={collectionTitle}
                                         onChange={(e) => setCollectionTitle(e.target.value)}
-                                        placeholder={isGeneratingMetadata ? "Generando título..." : "Título para la colección"}
+                                        placeholder={isGeneratingMetadata ? "Generando tÃ­tulo..." : "TÃ­tulo para la colecciÃ³n"}
                                         className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
                                         disabled={isProcessing || isGeneratingMetadata}
                                     />
@@ -1604,7 +1604,7 @@ const App: React.FC = () => {
                                         type="text"
                                         value={asignatura}
                                         onChange={(e) => setAsignatura(e.target.value)}
-                                        placeholder={isGeneratingMetadata ? "Generando sugerencia..." : "Ej: Biología Celular"}
+                                        placeholder={isGeneratingMetadata ? "Generando sugerencia..." : "Ej: BiologÃ­a Celular"}
                                         className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
                                         disabled={isProcessing || isGeneratingMetadata}
                                     />
@@ -1612,25 +1612,25 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                <label htmlFor="categoria-input" className="block text-sm font-medium text-neutral-300 mb-1">Categoría</label>
+                                <label htmlFor="categoria-input" className="block text-sm font-medium text-neutral-300 mb-1">CategorÃ­a</label>
                                 <input
                                     id="categoria-input"
                                     type="text"
                                     value={categoria}
                                     onChange={(e) => setCategoria(e.target.value)}
-                                    placeholder="Propósito (Ej: Examen Parcial, Actividad de Repaso). El usuario define esto."
+                                    placeholder="PropÃ³sito (Ej: Examen Parcial, Actividad de Repaso). El usuario define esto."
                                     className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
                                     disabled={isProcessing}
                                 />
                             </div>
                             <div className="md:col-span-2">
-                                <label htmlFor="descripcion-input" className="block text-sm font-medium text-neutral-300 mb-1">Descripción</label>
+                                <label htmlFor="descripcion-input" className="block text-sm font-medium text-neutral-300 mb-1">DescripciÃ³n</label>
                                 <div className="relative">
                                     <textarea
                                         id="descripcion-input"
                                         value={descripcion}
                                         onChange={(e) => setDescripcion(e.target.value)}
-                                        placeholder={isGeneratingMetadata ? "Generando descripción..." : "Una breve descripción del contenido de estudio."}
+                                        placeholder={isGeneratingMetadata ? "Generando descripciÃ³n..." : "Una breve descripciÃ³n del contenido de estudio."}
                                         className="w-full h-24 p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100 resize-y"
                                         disabled={isProcessing || isGeneratingMetadata}
                                     />
@@ -1645,8 +1645,8 @@ const App: React.FC = () => {
             <div className="overflow-auto flex-grow border border-neutral-700 rounded-md bg-neutral-900 min-h-[200px]">
               {generatedQuestions.length === 0 ? (
                  <div className="p-10 text-center text-neutral-400">
-                  <p className="italic">Aún no se han generado preguntas.</p>
-                  <p>Completa el contexto, añade solicitudes y haz clic en "Procesar Cola", o añade una pregunta manualmente.</p>
+                  <p className="italic">AÃºn no se han generado preguntas.</p>
+                  <p>Completa el contexto, aÃ±ade solicitudes y haz clic en "Procesar Cola", o aÃ±ade una pregunta manualmente.</p>
                 </div>
               ) : (
               <table className="min-w-full text-sm text-left text-neutral-100 table-fixed">
@@ -1669,16 +1669,16 @@ const App: React.FC = () => {
                             case "Pregunta":
                                 thClassName += "w-[20%] min-w-[200px]";
                                 break;
-                            case "Explicación":
+                            case "ExplicaciÃ³n":
                                 thClassName += "w-[20%] min-w-[200px]";
                                 break;
                             case "Tipo":
-                            case "Opción correcta 1":
-                            case "Opción Correcta 2":
-                            case "Opción Correcta 3":
-                            case "Opción Incorrecta 1":
-                            case "Opción Incorrecta 2":
-                            case "Opción Incorrecta 3":
+                            case "OpciÃ³n correcta 1":
+                            case "OpciÃ³n Correcta 2":
+                            case "OpciÃ³n Correcta 3":
+                            case "OpciÃ³n Incorrecta 1":
+                            case "OpciÃ³n Incorrecta 2":
+                            case "OpciÃ³n Incorrecta 3":
                                 thClassName += "w-[7%] min-w-[110px]"; 
                                 break;
                             default: 
@@ -1730,7 +1730,7 @@ const App: React.FC = () => {
                                     <EditableCell
                                         value={q[fieldKey]}
                                         onSave={(newValue) => handleQuestionEdit(q.id, fieldKey, newValue)}
-                                        multiline={fieldKey === 'Pregunta' || fieldKey === 'Explicación'}
+                                        multiline={fieldKey === 'Pregunta' || fieldKey === 'ExplicaciÃ³n'}
                                         className={`${cellBaseClasses} ${cellDynamicClasses}`}
                                         placeholder={header}
                                         isInitiallyEditing={q.Pregunta === '' && fieldKey === 'Pregunta'} // Auto-edit if new manual question
@@ -1767,7 +1767,7 @@ const App: React.FC = () => {
             ? "Usando clave API proporcionada por el usuario." 
             : (process.env.API_KEY ? "Usando clave API del entorno." : "Advertencia: Clave API no configurada.")
           }
-           Puedes cambiar esto en <button onClick={handleOpenConfigModal} className="underline hover:text-blue-300">Configuración</button>.
+           Puedes cambiar esto en <button onClick={handleOpenConfigModal} className="underline hover:text-blue-300">Inteligencia Artificial</button>.
         </p>
       </footer>
     </div>
@@ -1775,3 +1775,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
