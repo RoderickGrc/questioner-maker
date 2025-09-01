@@ -1167,12 +1167,11 @@ const App: React.FC = () => {
                 id="apiKeyInput"
                 value={userApiKeyInput}
                 onChange={(e) => setUserApiKeyInput(e.target.value)}
-                placeholder="Pega tu clave API aquÃ­..."
+                placeholder="Pega tu clave de Gemini aquí..."
                 className="w-full p-3 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
               />
               <p className="mt-1 text-xs text-neutral-400">
-                Dejar en blanco para usar la clave del entorno. Si se provee, esta clave se usarÃ¡ en lugar de la configurada en el entorno y se guardarÃ¡ localmente en tu navegador.
-              </p>
+                Debes definir una clave de API de Gemini para usar funciones de IA. Puedes conseguir la tuya gratis en aistudio.google.com.</p>
             </div>
 
             <div className="flex flex-col sm:flex-row justify-between gap-3">
@@ -1775,4 +1774,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
 
