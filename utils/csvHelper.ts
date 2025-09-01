@@ -1,4 +1,3 @@
-
 import { QuestionData, CSV_HEADERS } from '../types';
 
 // Robust CSV line parser considering quotes
@@ -67,8 +66,38 @@ export function generateCsvString(questions: QuestionData[]): string {
   return [headerRow, ...dataRows].join('\n');
 }
 
-export function downloadCsvFile(csvString: string, filename: string): void {
-  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+export function generateJsonString(
+    questions: QuestionData[],
+    collectionTitle: string,
+    asignatura: string,
+    categoria: string,
+    descripcion: string
+): string {
+    const exportData = {
+        "Nombre de Colección": collectionTitle || "Colección de Preguntas",
+        "Asignatura": asignatura,
+        "Categoría": categoria,
+        "Descripción": descripcion,
+        questions: questions,
+    };
+    return JSON.stringify(exportData, null, 2); // Pretty print JSON
+}
+
+// Build export filename using collection title: haiku_[titulo].ext
+export function buildExportFilename(collectionTitle: string, ext: 'json' | 'csv'): string {
+  const base = (collectionTitle && collectionTitle.trim() !== '') ? collectionTitle : 'coleccion';
+  // Normalize, remove diacritics, replace non-alphanumerics with underscores, collapse repeats
+  const sanitized = base
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .substring(0, 80); // keep it reasonable
+  return `haiku_${sanitized || 'coleccion'}.${ext}`;
+}
+
+function downloadFile(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
   const link = document.createElement('a');
   if (link.download !== undefined) {
     const url = URL.createObjectURL(blob);
@@ -80,4 +109,12 @@ export function downloadCsvFile(csvString: string, filename: string): void {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
+}
+
+export function downloadCsvFile(csvString: string, filename: string): void {
+  downloadFile(csvString, filename, 'text/csv;charset=utf-8;');
+}
+
+export function downloadJsonFile(jsonString: string, filename: string): void {
+    downloadFile(jsonString, filename, 'application/json;charset=utf-8;');
 }

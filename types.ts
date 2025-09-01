@@ -18,6 +18,13 @@ export enum RequestStatus {
   Error = 'error',
 }
 
+export enum ThinkingIntensity {
+  Fast = 'fast',
+  Medium = 'medium',
+  High = 'high',
+  VeryHigh = 'very-high',
+}
+
 export interface GenerationRequest {
   id:string;
   prompt: string;
@@ -26,6 +33,7 @@ export interface GenerationRequest {
   errorDetails?: string;
   jsonCorrectionAttempts?: number; 
   questionsGeneratedCount?: number; // To show how many questions this request produced
+  thinkingIntensity: ThinkingIntensity;
 }
 
 export const CSV_HEADERS = [
@@ -89,6 +97,7 @@ export enum QuestionDisplayType {
   MultipleCorrect = 'MultipleCorrect',
   SingleCorrect = 'SingleCorrect',
   TrueFalse = 'TrueFalse',
+  Flashcard = 'Flashcard',
   Unknown = 'Unknown',
   Empty = 'Empty', // Added new type for empty questions
 }

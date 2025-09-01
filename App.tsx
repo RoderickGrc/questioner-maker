@@ -1,16 +1,15 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { QuestionData, GenerationRequest, RequestStatus, CSV_HEADERS, GeneralContextFilePreview, LogEntry, LogType, CSV_HEADER_TO_QUESTION_DATA_KEY_MAP, QuestionDisplayType, QuestionTypeVisualInfo } from './types';
-import { APP_TITLE, CSV_FILENAME, MAX_OVERALL_REQUEST_ATTEMPTS, LOG_TIMESTAMP_FORMAT, ANIMATION_DEBOUNCE_TIME, GEMINI_MODEL_TEXT, REWRITE_QUESTIONS_FILENAME } from './constants';
-import { generateQuestionsFromGemini, generateCollectionTitleFromGemini } from './services/geminiService';
-import { generateCsvString, downloadCsvFile, parseCsvLineRobust } from './utils/csvHelper';
+import { QuestionData, GenerationRequest, RequestStatus, CSV_HEADERS, GeneralContextFilePreview, LogEntry, LogType, CSV_HEADER_TO_QUESTION_DATA_KEY_MAP, QuestionDisplayType, QuestionTypeVisualInfo, ThinkingIntensity } from './types';
+import { APP_TITLE, MAX_OVERALL_REQUEST_ATTEMPTS, LOG_TIMESTAMP_FORMAT, ANIMATION_DEBOUNCE_TIME, REWRITE_QUESTIONS_FILENAME } from './constants';
+import { generateQuestionsFromGemini, generateCollectionTitleFromGemini, generateMetadataFromGemini } from './services/geminiService';
+import { generateCsvString, downloadCsvFile, parseCsvLineRobust, generateJsonString, downloadJsonFile, buildExportFilename } from './utils/csvHelper';
 import EditableCell from './components/EditableCell';
 import { 
     PlusIcon, TrashIcon, DownloadIcon, ProcessIcon, CheckCircleIcon, XCircleIcon, ClockIcon, 
     ProcessingIcon as SpinnerIcon, PaperClipIcon, FileTextIcon, ListBulletIcon, ChevronDownIcon, 
     ChevronUpIcon, DocumentPlusIcon, AcademicCapIcon, PencilIcon, CogIcon, XMarkIcon,
     TextLinesIcon, CheckListIcon, CircleDotIcon, ArrowsRightLeftIcon, QuestionMarkCircleIcon, SparklesIcon,
-    MinusCircleIcon
+    MinusCircleIcon, BrainIcon
 } from './components/icons';
 
 const LOCAL_STORAGE_API_KEY = 'geminiUserApiKey';
@@ -59,7 +58,18 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     };
   }
 
-  // 2. True/False
+  // 2. Flashcard
+  if (hasC2 && isFieldEmpty(c1) && isFieldEmpty(c3) && isFieldEmpty(i1) && isFieldEmpty(i2) && isFieldEmpty(i3)) {
+    return {
+      type: QuestionDisplayType.Flashcard,
+      icon: <AcademicCapIcon className="w-5 h-5 text-cyan-400" />,
+      label: "Flashcard",
+      colorClass: "text-cyan-400",
+      description: "Flashcard: Solo 'Opción Correcta 2' tiene valor. Ideal para respuestas largas de desarrollo o conceptos. El resto de opciones debe estar vacío."
+    };
+  }
+
+  // 3. True/False
   if (hasC1 && hasI1 && isFieldEmpty(c2) && isFieldEmpty(c3) && isFieldEmpty(i2) && isFieldEmpty(i3)) {
     return {
       type: QuestionDisplayType.TrueFalse,
@@ -70,7 +80,7 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     };
   }
 
-  // 3. Multiple Correct
+  // 4. Multiple Correct
   if (hasC1 && (hasC2 || hasC3) && incorrectOptionsFilled >= 1) {
     return {
       type: QuestionDisplayType.MultipleCorrect,
@@ -81,7 +91,7 @@ const getQuestionTypeInfo = (question: QuestionData): QuestionTypeVisualInfo => 
     };
   }
 
-  // 4. Single Correct
+  // 5. Single Correct
   if (hasC1 && isFieldEmpty(c2) && isFieldEmpty(c3) && incorrectOptionsFilled >= 2) {
     return {
       type: QuestionDisplayType.SingleCorrect,
@@ -147,7 +157,7 @@ const App: React.FC = () => {
   const [generalContextFiles, setGeneralContextFiles] = useState<File[]>([]);
   const [generalContextFilePreviews, setGeneralContextFilePreviews] = useState<GeneralContextFilePreview[]>([]);
   const generalFilePickerRef = useRef<HTMLInputElement>(null);
-  const csvFilePickerRef = useRef<HTMLInputElement>(null);
+  const filePickerRef = useRef<HTMLInputElement>(null);
   
   const [requests, setRequests] = useState<GenerationRequest[]>([]);
   const [newRequestPrompt, setNewRequestPrompt] = useState<string>('');
@@ -183,11 +193,20 @@ const App: React.FC = () => {
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<Set<string>>(new Set());
   const [lastSelectedRowId, setLastSelectedRowId] = useState<string | null>(null);
 
-  // State for Collection Title
+  // State for Collection Metadata
   const [collectionTitle, setCollectionTitle] = useState<string>('');
-  const [isEditingCollectionTitle, setIsEditingCollectionTitle] = useState<boolean>(false);
-  const [isGeneratingTitle, setIsGeneratingTitle] = useState<boolean>(false);
-  const collectionTitleInputRef = useRef<HTMLInputElement>(null);
+  const [asignatura, setAsignatura] = useState<string>('');
+  const [categoria, setCategoria] = useState<string>('');
+  const [descripcion, setDescripcion] = useState<string>('');
+  const [isGeneratingMetadata, setIsGeneratingMetadata] = useState<boolean>(false);
+  const [isMetadataExpanded, setIsMetadataExpanded] = useState<boolean>(true);
+
+
+  // State for Save dropdown menu
+  const [isSaveMenuOpen, setIsSaveMenuOpen] = useState(false);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
+  
+  const [thinkingIntensity, setThinkingIntensity] = useState<ThinkingIntensity>(ThinkingIntensity.High);
 
 
   const addLogEntry = useCallback((type: LogType, message: string, details?: any) => {
@@ -204,7 +223,7 @@ const App: React.FC = () => {
         addLogEntry(LogType.Info, "No se encontró clave API de usuario en localStorage, se usará la del entorno si está disponible.");
     }
 
-    addLogEntry(LogType.System, `Aplicación iniciada. Usando modelo Gemini: ${GEMINI_MODEL_TEXT}`);
+    addLogEntry(LogType.System, `Aplicación iniciada.`);
     if (!process.env.API_KEY && !storedKey) {
       const errorMsg = "ADVERTENCIA: API_KEY no está configurada en el entorno y no se ha proporcionado una clave local. La aplicación podría no funcionar.";
       setGlobalError(errorMsg); 
@@ -226,6 +245,19 @@ const App: React.FC = () => {
         geminiThoughtsContainerRef.current.scrollTop = geminiThoughtsContainerRef.current.scrollHeight;
     }
   }, [geminiLiveThought, showGeminiStreamOutput]);
+
+  // Effect to close save menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (saveMenuRef.current && !saveMenuRef.current.contains(event.target as Node)) {
+        setIsSaveMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -327,65 +359,73 @@ const App: React.FC = () => {
     return key;
   }, [currentStoredUserApiKey]);
 
-  // Effect for auto-generating collection title
-  useEffect(() => {
-    const apiKey = getEffectiveApiKey();
-    // Condition for auto-generation:
-    // 1. API key is available.
-    // 2. Questions are present.
-    // 3. Collection title is currently effectively empty (null, undefined, or whitespace).
-    // 4. Not currently in the process of generating a title.
-    // 5. Not currently editing the title.
-    if (apiKey && generatedQuestions.length > 0 && (!collectionTitle || collectionTitle.trim() === '') && !isGeneratingTitle && !isEditingCollectionTitle) {
-      setIsGeneratingTitle(true);
-      addLogEntry(LogType.Info, "Intentando generar título de colección automáticamente...");
-      const sampleQuestionsText = generatedQuestions
-        .slice(0, 5) // Take first 5 questions as sample
-        .map(q => q.Pregunta)
-        .filter(p => p && p.trim() !== "") // Ensure questions are not empty
-        .join('\n');
 
-      if (!sampleQuestionsText && generatedQuestions.length > 0) {
-          // This case means all sample questions were empty, or there were <5 questions and all were empty.
-          setCollectionTitle("Colección de Preguntas"); // Default if sample is effectively empty but questions exist
-          setIsGeneratingTitle(false);
-          addLogEntry(LogType.Info, "Se estableció un título genérico ya que las preguntas de muestra estaban vacías.");
+  const generateAiMetadata = useCallback(async () => {
+      const apiKey = getEffectiveApiKey();
+      if (!apiKey || generatedQuestions.length === 0 || isGeneratingMetadata) return;
+
+      const needsTitle = !collectionTitle.trim();
+      const needsOtherMeta = !asignatura.trim() || !descripcion.trim();
+
+      if (!needsTitle && !needsOtherMeta) return;
+
+      setIsGeneratingMetadata(true);
+      addLogEntry(LogType.Info, "Iniciando generación de metadatos con IA...");
+
+      const sampleQuestionsText = generatedQuestions
+          .slice(-10) // Sample of last 10 questions
+          .map(q => q.Pregunta)
+          .filter(p => p && p.trim() !== "")
+          .join('\n');
+      
+      if (!sampleQuestionsText) {
+          addLogEntry(LogType.Warning, "No hay preguntas con texto para generar metadatos.");
+          setIsGeneratingMetadata(false);
           return;
       }
-      if (!sampleQuestionsText && generatedQuestions.length === 0){ 
-           // This case should ideally not be hit if the outer `generatedQuestions.length > 0` holds,
-           // but as a safeguard.
-           setIsGeneratingTitle(false); 
-           return;
+
+      try {
+          const promises = [];
+          if (needsTitle) {
+              promises.push(generateCollectionTitleFromGemini(apiKey, sampleQuestionsText, addLogEntry));
+          } else {
+              promises.push(Promise.resolve(collectionTitle));
+          }
+
+          if (needsOtherMeta) {
+              promises.push(generateMetadataFromGemini(apiKey, sampleQuestionsText, addLogEntry));
+          } else {
+              promises.push(Promise.resolve({ asignatura, descripcion }));
+          }
+
+          const [titleResult, metadataResult] = await Promise.all(promises);
+          
+          if (needsTitle && typeof titleResult === 'string') {
+              setCollectionTitle(titleResult);
+              addLogEntry(LogType.Info, `Título de colección generado: "${titleResult}"`);
+          }
+          if (needsOtherMeta && metadataResult) {
+              setAsignatura(metadataResult.asignatura);
+              setDescripcion(metadataResult.descripcion);
+              addLogEntry(LogType.Info, `Metadatos generados: Asignatura="${metadataResult.asignatura}", Descripción="${metadataResult.descripcion.substring(0, 50)}..."`);
+          }
+      } catch (error: any) {
+          addLogEntry(LogType.Error, "Error durante la generación de metadatos.", { error: error.message });
+      } finally {
+          setIsGeneratingMetadata(false);
       }
 
-      generateCollectionTitleFromGemini(apiKey, sampleQuestionsText, addLogEntry)
-        .then(title => {
-          setCollectionTitle(title);
-          addLogEntry(LogType.Info, `Título de colección generado: "${title}"`);
-        })
-        .catch(error => {
-          addLogEntry(LogType.Error, "Error al generar título de colección.", { error: error.message });
-          setCollectionTitle("Colección de Preguntas"); // Fallback on error
-        })
-        .finally(() => {
-          setIsGeneratingTitle(false);
-        });
-    }
-    // Removed the automatic clearing of the title when generatedQuestions.length is 0.
-    // The user can now set a title even with no questions, and it will persist.
-    // If the user manually clears the title, and questions exist, the above block will re-trigger auto-generation.
-  }, [generatedQuestions, collectionTitle, isGeneratingTitle, isEditingCollectionTitle, getEffectiveApiKey, addLogEntry]);
+  }, [getEffectiveApiKey, generatedQuestions, collectionTitle, asignatura, descripcion, addLogEntry, isGeneratingMetadata]);
 
-
-  // Effect for focusing title input when editing
+  const prevQuestionCountRef = useRef(generatedQuestions.length);
   useEffect(() => {
-    if (isEditingCollectionTitle && collectionTitleInputRef.current) {
-      collectionTitleInputRef.current.focus();
-      collectionTitleInputRef.current.select();
-    }
-  }, [isEditingCollectionTitle]);
+      const hasNewQuestions = generatedQuestions.length > prevQuestionCountRef.current;
+      prevQuestionCountRef.current = generatedQuestions.length;
 
+      if (hasNewQuestions) {
+          generateAiMetadata();
+      }
+  }, [generatedQuestions, generateAiMetadata]);
 
   const handleOpenConfigModal = () => {
     setUserApiKeyInput(currentStoredUserApiKey || ''); 
@@ -418,6 +458,17 @@ const App: React.FC = () => {
     addLogEntry(LogType.Info, "Configuración de API Key restablecida. Se usará la del entorno.");
   };
 
+  const intensityMapping = [ThinkingIntensity.Fast, ThinkingIntensity.Medium, ThinkingIntensity.High, ThinkingIntensity.VeryHigh];
+  const intensityLabels = ["Rápido", "Medio", "Alto", "Muy Alto"];
+
+  const handleIntensityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = parseInt(e.target.value, 10);
+      setThinkingIntensity(intensityMapping[value]);
+  };
+
+  const getIntensityValue = () => {
+      return intensityMapping.indexOf(thinkingIntensity);
+  };
 
   const handleAddRequest = () => {
     if (newRequestPrompt.trim() === '') return;
@@ -425,7 +476,8 @@ const App: React.FC = () => {
       id: `req-${Date.now()}-${Math.random().toString(36).substring(7)}`,
       prompt: newRequestPrompt,
       status: RequestStatus.Pending,
-      requestFiles: [...newRequestFiles], 
+      requestFiles: [...newRequestFiles],
+      thinkingIntensity: thinkingIntensity,
     };
     setRequests(prev => [...prev, newReq]);
     addLogEntry(LogType.Info, "Nueva solicitud añadida a la cola.", { prompt: newRequestPrompt, files: newRequestFiles.map(f => f.name) });
@@ -451,9 +503,10 @@ const App: React.FC = () => {
     if (requestToEdit && requestToEdit.status !== RequestStatus.Processing) {
       setNewRequestPrompt(requestToEdit.prompt);
       setNewRequestFiles(requestToEdit.requestFiles || []);
+      setThinkingIntensity(requestToEdit.thinkingIntensity);
       setRequests(prevReqs => prevReqs.filter(req => req.id !== id));
       addLogEntry(LogType.Info, `Solicitud "${requestToEdit.prompt.substring(0,30)}..." movida a edición.`);
-      const promptInput = newRequestAreaRef.current?.querySelector('input[type="text"]') as HTMLInputElement | null;
+      const promptInput = newRequestAreaRef.current?.querySelector('textarea');
       promptInput?.focus();
     }
   };
@@ -603,7 +656,8 @@ const App: React.FC = () => {
             generalContextText,
             generalContextFiles, 
             currentRequest.prompt,
-            currentRequest.requestFiles || [], 
+            currentRequest.requestFiles || [],
+            currentRequest.thinkingIntensity,
             addLogEntry,
             setLiveStreamContentCallback,
             existingQuestionsCsv, 
@@ -680,12 +734,14 @@ const App: React.FC = () => {
   }, [requests, generalContextText, generalContextFiles, addLogEntry, generatedQuestions, setLiveStreamContentCallback, setCurrentAnimatedPreviewText, setGeminiLiveThought, getEffectiveApiKey]);
 
 
-  const handleSaveCsv = () => {
+  const handleSave = (format: 'csv' | 'json') => {
+    setIsSaveMenuOpen(false);
+
     const questionsWithTypes = generatedQuestions.map(q => ({ ...q, typeInfo: getQuestionTypeInfo(q) }));
 
     const unknownQuestionsExist = questionsWithTypes.some(q => q.typeInfo.type === QuestionDisplayType.Unknown);
     if (unknownQuestionsExist) {
-        const errorMsg = "No se puede guardar CSV: existen preguntas con tipo 'Desconocido'. Por favor, edita o elimina estas preguntas.";
+        const errorMsg = "No se puede guardar: existen preguntas con tipo 'Desconocido'. Por favor, edita o elimina estas preguntas.";
         addLogEntry(LogType.Error, errorMsg, { count: questionsWithTypes.filter(q => q.typeInfo.type === QuestionDisplayType.Unknown).length });
         setGlobalError(errorMsg);
         return;
@@ -697,20 +753,29 @@ const App: React.FC = () => {
 
 
     if (questionsToSave.length === 0) {
-        addLogEntry(LogType.Info, "Intento de guardar CSV, pero no hay preguntas válidas para exportar (después de filtrar vacías/desconocidas).");
-        setGlobalError("No hay preguntas válidas para guardar en el CSV. Asegúrate de que no todas estén vacías o marcadas como desconocidas.");
+        const errorMsg = "No hay preguntas válidas para guardar. Asegúrate de que no todas estén vacías o marcadas como desconocidas.";
+        addLogEntry(LogType.Info, "Intento de guardar, pero no hay preguntas válidas para exportar.", { format });
+        setGlobalError(errorMsg);
         return;
     }
     
     setGlobalError(null); // Clear previous errors if save is successful
 
     try {
+      if (format === 'csv') {
         const csvString = generateCsvString(questionsToSave);
-        downloadCsvFile(csvString, CSV_FILENAME);
-        addLogEntry(LogType.Info, "Archivo CSV generado y descarga iniciada.", { filename: CSV_FILENAME, questionCount: questionsToSave.length, totalOriginalCount: generatedQuestions.length, collectionTitle });
+        const filename = buildExportFilename(collectionTitle, 'csv');
+        downloadCsvFile(csvString, filename);
+        addLogEntry(LogType.Info, "Archivo CSV generado y descarga iniciada.", { filename, questionCount: questionsToSave.length });
+      } else if (format === 'json') {
+        const jsonString = generateJsonString(questionsToSave, collectionTitle, asignatura, categoria, descripcion);
+        const filename = buildExportFilename(collectionTitle, 'json');
+        downloadJsonFile(jsonString, filename);
+        addLogEntry(LogType.Info, "Archivo JSON generado y descarga iniciada.", { filename, questionCount: questionsToSave.length, collectionTitle });
+      }
     } catch (error: any) {
-        addLogEntry(LogType.Error, "Error al generar o descargar el archivo CSV.", { error: error.message });
-        setGlobalError("Error al generar el archivo CSV: " + error.message);
+        addLogEntry(LogType.Error, `Error al generar o descargar el archivo ${format.toUpperCase()}.`, { error: error.message });
+        setGlobalError(`Error al generar el archivo ${format.toUpperCase()}: ` + error.message);
     }
   };
   
@@ -770,104 +835,125 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLoadCsvClick = () => {
-    if (csvFilePickerRef.current) {
-        csvFilePickerRef.current.click();
+  const handleLoadFileClick = () => {
+    if (filePickerRef.current) {
+        filePickerRef.current.click();
     }
   };
 
-  const handleCsvFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
         const file = event.target.files[0];
-        addLogEntry(LogType.FileProcessing, `Intentando cargar CSV: ${file.name}`);
+        const fileNameLower = file.name.toLowerCase();
+        
         const reader = new FileReader();
+
         reader.onload = (e) => {
             const text = e.target?.result as string;
             if (!text) {
-                addLogEntry(LogType.Error, "Error al leer el archivo CSV: contenido vacío.", {fileName: file.name});
-                setGlobalError("Error: El archivo CSV está vacío o no se pudo leer.");
+                const errorMsg = `Error: El archivo ${file.name} está vacío o no se pudo leer.`;
+                addLogEntry(LogType.Error, "Error al leer el archivo: contenido vacío.", {fileName: file.name});
+                setGlobalError(errorMsg);
                 return;
             }
 
-            const lines = text.split(/\r\n|\n/);
-            if (lines.length < 2) { // Must have header and at least one data row
-                addLogEntry(LogType.Error, "Archivo CSV inválido: debe tener al menos una cabecera y una fila de datos.", {fileName: file.name});
-                setGlobalError("Error: El archivo CSV debe tener al menos una cabecera y una fila de datos.");
-                return;
-            }
+            try {
+                if (fileNameLower.endsWith('.csv')) {
+                    addLogEntry(LogType.FileProcessing, `Intentando cargar CSV: ${file.name}`);
+                    const lines = text.split(/\r\n|\n/);
+                    if (lines.length < 2) throw new Error("Archivo CSV inválido: debe tener al menos una cabecera y una fila de datos.");
+                    
+                    const headerLine = lines[0];
+                    const parsedHeader = parseCsvLineRobust(headerLine);
+                    const isValidHeader = CSV_HEADERS.length === parsedHeader.length && CSV_HEADERS.every((h, i) => parsedHeader[i].trim() === h.trim());
+                    if (!isValidHeader) throw new Error(`La cabecera del CSV no coincide. Esperado: ${CSV_HEADERS.join(', ')}. Encontrado: ${parsedHeader.join(', ')}`);
 
-            const headerLine = lines[0];
-            const parsedHeader = parseCsvLineRobust(headerLine);
-
-            const isValidHeader = CSV_HEADERS.length === parsedHeader.length && 
-                                  CSV_HEADERS.every((expectedHeader, i) => parsedHeader[i].trim() === expectedHeader.trim());
-
-            if (!isValidHeader) {
-                addLogEntry(LogType.Error, "Cabecera de CSV inválida.", {fileName: file.name, expected: CSV_HEADERS, found: parsedHeader});
-                setGlobalError(`Error: La cabecera del CSV no coincide con el formato esperado. Esperado: ${CSV_HEADERS.join(', ')}. Encontrado: ${parsedHeader.join(', ')}`);
-                return;
-            }
-
-            const newQuestions: QuestionData[] = [];
-            let skippedRows = 0;
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i];
-                if (line.trim() === '') continue; // Skip empty lines
-
-                const fields = parseCsvLineRobust(line);
-                if (fields.length !== CSV_HEADERS.length) {
-                    addLogEntry(LogType.Warning, `Fila ${i+1} del CSV omitida: número incorrecto de columnas. Esperado ${CSV_HEADERS.length}, encontrado ${fields.length}.`, {fileName: file.name, lineContent: line});
-                    skippedRows++;
-                    continue;
-                }
-                
-                const question: Partial<QuestionData> = {
-                  id: `csv-import-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-                };
-                let validRow = true;
-
-                CSV_HEADERS.forEach((header, index) => {
-                    const key = CSV_HEADER_TO_QUESTION_DATA_KEY_MAP[header];
-                    if (key) {
-                        (question as any)[key] = fields[index] || undefined; // Use undefined for empty optional fields
+                    const newQuestions: QuestionData[] = [];
+                    let skippedRows = 0;
+                    for (let i = 1; i < lines.length; i++) {
+                        if (lines[i].trim() === '') continue;
+                        const fields = parseCsvLineRobust(lines[i]);
+                        if (fields.length !== CSV_HEADERS.length) {
+                            addLogEntry(LogType.Warning, `Fila ${i+1} del CSV omitida: número incorrecto de columnas.`, {fileName: file.name});
+                            skippedRows++;
+                            continue;
+                        }
+                        const question: Partial<QuestionData> = { id: `csv-import-${Date.now()}-${Math.random().toString(36).substring(2, 9)}` };
+                        CSV_HEADERS.forEach((header, index) => {
+                            const key = CSV_HEADER_TO_QUESTION_DATA_KEY_MAP[header];
+                            if (key) (question as any)[key] = fields[index] || undefined;
+                        });
+                        newQuestions.push(question as QuestionData);
                     }
-                });
-                
-                // For CSV import, "Pregunta" can be empty (will be classified as 'Empty' type)
-                // but "Opción correcta 1" is still desirable for non-empty questions.
-                // We'll let `getQuestionTypeInfo` handle the classification.
-                // If "Pregunta" is empty, it's an "Empty" question.
-                // If "Pregunta" is not empty but "Opción correcta 1" is, it might become "Unknown".
-                if (!isFieldEmpty(question.Pregunta) && isFieldEmpty(question['Opción correcta 1'])) {
-                     addLogEntry(LogType.Warning, `Fila ${i+1} del CSV importada, pero 'Opción correcta 1' está vacía para una pregunta no vacía. Podría clasificarse como 'Desconocido'.`, {fileName: file.name, rowData: question});
-                }
+                    setGeneratedQuestions(prev => [...prev, ...newQuestions]);
+                    addLogEntry(LogType.Info, `${newQuestions.length} preguntas importadas desde "${file.name}". ${skippedRows > 0 ? `${skippedRows} filas omitidas.` : ''}`);
 
+                } else if (fileNameLower.endsWith('.json')) {
+                    addLogEntry(LogType.FileProcessing, `Intentando cargar JSON: ${file.name}`);
+                    const data = JSON.parse(text);
 
-                if (validRow) { // We're not explicitly skipping here based on content, rather letting type system handle it.
-                    newQuestions.push(question as QuestionData);
+                    if (typeof data !== 'object' || data === null) throw new Error("El archivo JSON no contiene un objeto válido.");
+                    
+                    if (typeof data["Nombre de Colección"] === 'string') {
+                        setCollectionTitle(data["Nombre de Colección"]);
+                    }
+                    if (typeof data["Asignatura"] === 'string') {
+                        setAsignatura(data["Asignatura"]);
+                    }
+                    if (typeof data["Categoría"] === 'string') {
+                        setCategoria(data["Categoría"]);
+                    }
+                    if (typeof data["Descripción"] === 'string') {
+                        setDescripcion(data["Descripción"]);
+                    }
+                    addLogEntry(LogType.Info, `Metadatos importados desde JSON.`);
+
+                    if (!Array.isArray(data.questions)) throw new Error("El objeto JSON no contiene un array 'questions'.");
+
+                    const newQuestions: QuestionData[] = [];
+                    let skippedCount = 0;
+                    for (const item of data.questions) {
+                        if (typeof item !== 'object' || item === null || typeof item.Pregunta !== 'string') {
+                            skippedCount++;
+                            continue;
+                        }
+                        newQuestions.push({
+                            id: `json-import-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                            Pregunta: item.Pregunta,
+                            'Opción correcta 1': String(item['Opción correcta 1'] ?? ''),
+                            'Opción Correcta 2': item['Opción Correcta 2'] || undefined,
+                            'Opción Correcta 3': item['Opción Correcta 3'] || undefined,
+                            'Opción Incorrecta 1': item['Opción Incorrecta 1'] || undefined,
+                            'Opción Incorrecta 2': item['Opción Incorrecta 2'] || undefined,
+                            'Opción Incorrecta 3': item['Opción Incorrecta 3'] || undefined,
+                            Explicación: item.Explicación || undefined,
+                        });
+                    }
+                    setGeneratedQuestions(prev => [...prev, ...newQuestions]);
+                    addLogEntry(LogType.Info, `${newQuestions.length} preguntas importadas desde "${file.name}".${skippedCount > 0 ? ` ${skippedCount} items omitidos.` : ''}`);
+
+                } else {
+                    throw new Error("Tipo de archivo no soportado. Por favor, carga un archivo .csv o .json.");
                 }
-            }
-            
-            setGeneratedQuestions(prev => [...prev, ...newQuestions]);
-            addLogEntry(LogType.Info, `${newQuestions.length} preguntas importadas desde "${file.name}". ${skippedRows > 0 ? `${skippedRows} filas omitidas.` : ''}`, {fileName: file.name});
-            setGlobalError(null); // Clear previous errors
-            if (newQuestions.length > 0) {
-                 setTimeout(() => { // Add a slight delay to allow UI to update
-                    const lastImportedQuestion = newQuestions[newQuestions.length - 1];
-                    const element = document.getElementById(lastImportedQuestion.id);
-                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 100);
+                setGlobalError(null);
+
+            } catch (error: any) {
+                const errorMsg = `Error al procesar el archivo "${file.name}": ${error.message}`;
+                addLogEntry(LogType.Error, errorMsg, {fileName: file.name});
+                setGlobalError(errorMsg);
             }
         };
+
         reader.onerror = () => {
-            addLogEntry(LogType.Error, `Error al leer el archivo CSV "${file.name}".`, { error: reader.error });
-            setGlobalError(`Error al leer el archivo CSV: ${reader.error?.message}`);
+            const errorMsg = `Error al leer el archivo "${file.name}".`;
+            addLogEntry(LogType.Error, errorMsg, { error: reader.error });
+            setGlobalError(errorMsg);
         };
+
         reader.readAsText(file);
         
-        // Reset file input to allow re-uploading the same file
-        if (csvFilePickerRef.current) {
-            csvFilePickerRef.current.value = "";
+        if (filePickerRef.current) {
+            filePickerRef.current.value = "";
         }
     }
   };
@@ -1002,30 +1088,9 @@ const App: React.FC = () => {
     setSelectedQuestionIds(new Set());
     setLastSelectedRowId(null);
 
-    const promptInput = newRequestAreaRef.current?.querySelector('input[type="text"]') as HTMLInputElement | null;
+    const promptInput = newRequestAreaRef.current?.querySelector('textarea');
     promptInput?.focus();
   };
-
-  const handleCollectionTitleSave = (newTitle: string) => {
-    const trimmedTitle = newTitle.trim();
-    setCollectionTitle(trimmedTitle);
-    setIsEditingCollectionTitle(false);
-    if (trimmedTitle) {
-        addLogEntry(LogType.Info, `Título de la colección actualizado a: "${trimmedTitle}"`);
-    } else {
-        addLogEntry(LogType.Info, "Título de la colección borrado. Se mostrará el marcador de posición.");
-    }
-  };
-
-  const handleCollectionTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleCollectionTitleSave(e.currentTarget.value);
-    } else if (e.key === 'Escape') {
-      setIsEditingCollectionTitle(false); 
-      addLogEntry(LogType.Info, "Edición del título de la colección cancelada.");
-    }
-  };
-
 
   const isQuestionSelected = (questionId: string) => selectedQuestionIds.has(questionId);
   const areAllQuestionsSelected = selectedQuestionIds.size === generatedQuestions.length && generatedQuestions.length > 0;
@@ -1095,7 +1160,7 @@ const App: React.FC = () => {
             
             <div className="mb-4">
               <label htmlFor="apiKeyInput" className="block text-sm font-medium text-neutral-300 mb-1">
-                Clave API de Gemini (Opcional)
+                Clave API de Gemini (GEMINI_API_KEY)
               </label>
               <input
                 type="password"
@@ -1178,14 +1243,12 @@ const App: React.FC = () => {
           <div>
             <h2 className="text-2xl font-semibold text-neutral-100 mb-3">2. Cola de Solicitudes</h2>
             <div ref={newRequestAreaRef} className="bg-neutral-800 p-3 rounded-md border border-neutral-700">
-              <input
-                type="text"
+              <textarea
                 value={newRequestPrompt}
                 onChange={(e) => setNewRequestPrompt(e.target.value)}
-                placeholder="Tema o instrucción específica para un grupo de preguntas"
-                className="w-full p-3 mb-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
+                placeholder="Tema o instrucción específica para un grupo de preguntas (puede ser de varias líneas)"
+                className="w-full p-3 mb-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100 h-24 resize-y"
                 disabled={isProcessing}
-                onKeyPress={(e) => e.key === 'Enter' && !isProcessing && newRequestPrompt.trim() !== '' && handleAddRequest()}
               />
               <div className="mb-2">
                  <label htmlFor="request-files" className="block text-xs font-medium text-neutral-400 mb-1">
@@ -1218,6 +1281,32 @@ const App: React.FC = () => {
                       ))}
                     </div>
                 )}
+              </div>
+               <div className="my-3">
+                  <label htmlFor="thinking-intensity" className="flex items-center gap-2 text-sm font-medium text-neutral-300 mb-2">
+                      <BrainIcon className="w-5 h-5 text-purple-400" />
+                      Intensidad de Pensamiento
+                  </label>
+                  <input
+                      type="range"
+                      id="thinking-intensity"
+                      min="0"
+                      max="3"
+                      value={getIntensityValue()}
+                      onChange={handleIntensityChange}
+                      className="w-full h-2 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      disabled={isProcessing}
+                  />
+                  <div className="flex justify-between text-xs text-neutral-400 mt-1 px-1">
+                      {intensityLabels.map((label, index) => (
+                          <span 
+                              key={label} 
+                              className={`font-medium ${getIntensityValue() === index ? 'text-purple-300' : ''}`}
+                          >
+                              {label}
+                          </span>
+                      ))}
+                  </div>
               </div>
               <button
                 onClick={handleAddRequest}
@@ -1366,7 +1455,7 @@ const App: React.FC = () => {
                         {logEntries.map(log => (
                         <li key={log.id} className={`py-1 border-b border-neutral-800 last:border-b-0 ${getLogColor(log.type)}`}>
                             <span className="font-semibold">{log.timestamp.toLocaleTimeString(undefined, LOG_TIMESTAMP_FORMAT)}</span> [{log.type.toUpperCase()}]: {log.message}
-                            {log.details && (typeof log.details === 'string' || typeof log.details === 'number') && <span className="block pl-4 text-neutral-400 text-opacity-80">{'>'}{String(log.details).substring(0,300)}{String(log.details).length > 300 ? '...' : ''}</span>}
+                            {log.details && (typeof log.details === 'string' || typeof log.details === 'number') && <span className="block pl-4 text-neutral-400 text-opacity-80">{'>'} {String(log.details).substring(0,300)}{String(log.details).length > 300 ? '...' : ''}</span>}
                             {log.details && typeof log.details === 'object' && (
                                 <details className="pl-4 mt-1 text-neutral-400 text-opacity-80">
                                     <summary className="cursor-pointer text-xs hover:text-neutral-300">Ver detalles...</summary>
@@ -1390,19 +1479,19 @@ const App: React.FC = () => {
               <div className="flex gap-2">
                  <input 
                     type="file" 
-                    ref={csvFilePickerRef}
-                    onChange={handleCsvFileChange}
-                    accept=".csv"
+                    ref={filePickerRef}
+                    onChange={handleFileChange}
+                    accept=".csv,.json"
                     className="hidden" 
-                    id="csv-file-picker"
+                    id="file-picker"
                 />
                 <button
-                  onClick={handleLoadCsvClick}
+                  onClick={handleLoadFileClick}
                   disabled={isProcessing}
                   className="p-3 bg-teal-600 hover:bg-teal-700 text-white rounded-md flex items-center gap-2 transition-colors disabled:bg-neutral-700 disabled:text-neutral-400 disabled:cursor-not-allowed"
-                  title="Cargar preguntas desde un archivo CSV"
+                  title="Cargar preguntas desde un archivo CSV o JSON"
                 >
-                  <DocumentPlusIcon className="w-5 h-5" /> Cargar CSV
+                  <DocumentPlusIcon className="w-5 h-5" /> Cargar Archivo
                 </button>
                 <button
                   onClick={handleAddManualQuestion}
@@ -1412,81 +1501,145 @@ const App: React.FC = () => {
                 >
                   <PlusIcon className="w-5 h-5" /> Añadir Pregunta
                 </button>
-                <button
-                  onClick={handleSaveCsv}
-                  disabled={isProcessing || generatedQuestions.length === 0 || hasUnknownQuestions}
-                  className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-2 transition-colors disabled:bg-neutral-700 disabled:text-neutral-400 disabled:cursor-not-allowed"
-                  title={hasUnknownQuestions ? "No se puede guardar: existen preguntas con tipo 'Desconocido'. Por favor, corrígelas." : "Guardar preguntas en formato CSV"}
-                >
-                  <DownloadIcon className="w-5 h-5" /> Guardar CSV
-                </button>
+                <div className="relative" ref={saveMenuRef}>
+                    <button
+                        onClick={() => setIsSaveMenuOpen(prev => !prev)}
+                        disabled={isProcessing || generatedQuestions.length === 0 || hasUnknownQuestions}
+                        className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-2 transition-colors disabled:bg-neutral-700 disabled:text-neutral-400 disabled:cursor-not-allowed"
+                        title={hasUnknownQuestions ? "No se puede guardar: existen preguntas con tipo 'Desconocido'. Por favor, corrígelas." : "Guardar preguntas"}
+                    >
+                        <DownloadIcon className="w-5 h-5" /> Guardar
+                        <ChevronDownIcon className={`w-4 h-4 transition-transform ${isSaveMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isSaveMenuOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg z-20 overflow-hidden">
+                            <button
+                                onClick={() => handleSave('json')}
+                                className="w-full text-left px-4 py-2 text-sm text-neutral-200 hover:bg-blue-600 flex items-center gap-2"
+                            >
+                                Guardar como JSON
+                            </button>
+                            <button
+                                onClick={() => handleSave('csv')}
+                                className="w-full text-left px-4 py-2 text-sm text-neutral-200 hover:bg-blue-600 flex items-center gap-2"
+                            >
+                                Guardar como CSV
+                            </button>
+                        </div>
+                    )}
+                </div>
               </div>
             </div>
 
-            {/* Collection Title / Bulk Actions Bar */}
-            <div 
-              className={`mb-3 py-2 px-3 bg-neutral-800 border border-neutral-700 rounded-lg flex items-center h-[52px] transition-all duration-150 ${ 
-                selectedQuestionIds.size > 0 ? 'justify-between' : 'justify-center' 
-              }`}
-            >
-              {selectedQuestionIds.size > 0 ? (
-                <>
-                  <span className="text-sm text-neutral-300">
-                    {selectedQuestionIds.size} pregunta(s) seleccionada(s)
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap justify-end"> {/* Removed sm:justify-end as it's always justify-end now with fixed height */}
-                    <button
-                      onClick={handleDeleteSelectedQuestions}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded-md flex items-center gap-1.5 transition-colors disabled:bg-neutral-600 disabled:text-neutral-400"
-                      title="Eliminar preguntas seleccionadas"
-                    >
-                      <TrashIcon className="w-4 h-4" /> Eliminar
-                    </button>
-                    <button
-                      onClick={handleRewriteSelectedQuestions}
-                      disabled={isProcessing}
-                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md flex items-center gap-1.5 transition-colors disabled:bg-neutral-600 disabled:text-neutral-400"
-                      title="Adjuntar preguntas seleccionadas para reescritura. Defina la instrucción en 'Nueva Solicitud'."
-                    >
-                      <SparklesIcon className="w-4 h-4" /> Reescribir
-                    </button>
-                    <button
-                      disabled // Placeholder for future "Convertir"
-                      className="px-3 py-1.5 bg-neutral-600 text-neutral-400 text-xs rounded-md flex items-center gap-1.5 cursor-not-allowed"
-                      title="Convertir tipo de pregunta (Próximamente)"
-                    >
-                      Convertir
-                    </button>
-                  </div>
-                </>
-              ) : isEditingCollectionTitle ? (
-                <input
-                  ref={collectionTitleInputRef}
-                  type="text"
-                  defaultValue={collectionTitle}
-                  onBlur={(e) => handleCollectionTitleSave(e.target.value)}
-                  onKeyDown={handleCollectionTitleKeyDown}
-                  className="w-full max-w-xl py-1 px-2 bg-transparent border border-transparent hover:border-neutral-600 focus:border-blue-500 rounded-md text-lg font-semibold text-neutral-100 focus:ring-0 text-center outline-none"
-                  placeholder="Escribe un título para la colección..."
-                />
-              ) : isGeneratingTitle ? (
-                <p className="text-lg text-neutral-400 italic flex items-center gap-2">
-                    <SpinnerIcon className="w-5 h-5"/> Generando título...
-                </p>
-              ) : (
-                <div 
-                    onClick={() => { if (!isProcessing) setIsEditingCollectionTitle(true); }} 
-                    className="cursor-pointer p-1 group w-full"
-                    title="Click para editar el título de la colección"
-                >
-                  <h3 className={`text-lg font-semibold text-center group-hover:text-blue-300 transition-colors ${
-                      !collectionTitle || collectionTitle.trim() === '' ? 'text-neutral-500 italic' : 'text-neutral-100'
-                  }`}>
-                    {collectionTitle && collectionTitle.trim() !== '' ? collectionTitle : "Título..."}
-                  </h3>
+             {selectedQuestionIds.size > 0 && (
+                <div className="mb-3 py-2 px-3 bg-neutral-800 border border-neutral-700 rounded-lg flex items-center justify-between h-[52px] transition-all duration-150">
+                    <span className="text-sm text-neutral-300">
+                        {selectedQuestionIds.size} pregunta(s) seleccionada(s)
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                        <button
+                        onClick={handleDeleteSelectedQuestions}
+                        disabled={isProcessing}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded-md flex items-center gap-1.5 transition-colors disabled:bg-neutral-600 disabled:text-neutral-400"
+                        title="Eliminar preguntas seleccionadas"
+                        >
+                        <TrashIcon className="w-4 h-4" /> Eliminar
+                        </button>
+                        <button
+                        onClick={handleRewriteSelectedQuestions}
+                        disabled={isProcessing}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md flex items-center gap-1.5 transition-colors disabled:bg-neutral-600 disabled:text-neutral-400"
+                        title="Adjuntar preguntas seleccionadas para reescritura. Defina la instrucción en 'Nueva Solicitud'."
+                        >
+                        <SparklesIcon className="w-4 h-4" /> Reescribir
+                        </button>
+                    </div>
                 </div>
-              )}
+            )}
+            
+            <div className="mb-4 bg-neutral-800 border border-neutral-700 rounded-lg">
+                <button
+                    onClick={() => setIsMetadataExpanded(prev => !prev)}
+                    className="w-full flex justify-between items-center p-4 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-t-lg"
+                    aria-expanded={isMetadataExpanded}
+                    aria-controls="metadata-content"
+                >
+                    <h3 className="text-xl font-semibold text-neutral-200">Metadatos de la Colección</h3>
+                    {isMetadataExpanded ? <ChevronUpIcon className="w-6 h-6 text-neutral-400" /> : <ChevronDownIcon className="w-6 h-6 text-neutral-400" />}
+                </button>
+                {isMetadataExpanded && (
+                    <div id="metadata-content" className="p-4 pt-0 space-y-4">
+                        {isGeneratingMetadata && (
+                          <div className="mb-2 p-3 bg-neutral-800 border border-neutral-700 rounded-md flex items-center gap-3">
+                            <SpinnerIcon className="w-5 h-5 text-blue-400" />
+                            <div className="flex-1">
+                              <p className="text-sm text-neutral-200">Generando metadatos con IA...</p>
+                              <div className="mt-2 h-1.5 bg-neutral-700 rounded">
+                                <div className="h-1.5 bg-blue-500 rounded w-2/3 animate-pulse"></div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="collection-title-input" className="block text-sm font-medium text-neutral-300 mb-1">Nombre de Colección</label>
+                                <div className="relative">
+                                    <input
+                                        id="collection-title-input"
+                                        type="text"
+                                        value={collectionTitle}
+                                        onChange={(e) => setCollectionTitle(e.target.value)}
+                                        placeholder={isGeneratingMetadata ? "Generando título..." : "Título para la colección"}
+                                        className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
+                                        disabled={isProcessing || isGeneratingMetadata}
+                                    />
+                                    {/* Removed floating spinner for cleaner loading UI */}
+                                </div>
+                            </div>
+                            <div>
+                                <label htmlFor="asignatura-input" className="block text-sm font-medium text-neutral-300 mb-1">Asignatura</label>
+                                <div className="relative">
+                                    <input
+                                        id="asignatura-input"
+                                        type="text"
+                                        value={asignatura}
+                                        onChange={(e) => setAsignatura(e.target.value)}
+                                        placeholder={isGeneratingMetadata ? "Generando sugerencia..." : "Ej: Biología Celular"}
+                                        className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
+                                        disabled={isProcessing || isGeneratingMetadata}
+                                    />
+                                    {/* Removed floating spinner for cleaner loading UI */}
+                                </div>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label htmlFor="categoria-input" className="block text-sm font-medium text-neutral-300 mb-1">Categoría</label>
+                                <input
+                                    id="categoria-input"
+                                    type="text"
+                                    value={categoria}
+                                    onChange={(e) => setCategoria(e.target.value)}
+                                    placeholder="Propósito (Ej: Examen Parcial, Actividad de Repaso). El usuario define esto."
+                                    className="w-full p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100"
+                                    disabled={isProcessing}
+                                />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label htmlFor="descripcion-input" className="block text-sm font-medium text-neutral-300 mb-1">Descripción</label>
+                                <div className="relative">
+                                    <textarea
+                                        id="descripcion-input"
+                                        value={descripcion}
+                                        onChange={(e) => setDescripcion(e.target.value)}
+                                        placeholder={isGeneratingMetadata ? "Generando descripción..." : "Una breve descripción del contenido de estudio."}
+                                        className="w-full h-24 p-2 bg-neutral-700 border border-neutral-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors placeholder-neutral-500 text-neutral-100 resize-y"
+                                        disabled={isProcessing || isGeneratingMetadata}
+                                    />
+                                    {/* Removed floating spinner for cleaner loading UI */}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="overflow-auto flex-grow border border-neutral-700 rounded-md bg-neutral-900 min-h-[200px]">
@@ -1608,7 +1761,7 @@ const App: React.FC = () => {
         </section>
       </main>
       <footer className="w-full mt-12 text-center text-sm text-neutral-400">
-        <p>Desarrollado con React, TypeScript, Tailwind CSS y Gemini API ({GEMINI_MODEL_TEXT}).</p>
+        <p>Desarrollado con React, TypeScript, Tailwind CSS y Gemini API.</p>
         <p>
           {currentStoredUserApiKey 
             ? "Usando clave API proporcionada por el usuario." 

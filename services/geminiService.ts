@@ -1,10 +1,14 @@
-
-import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
-import { GEMINI_MODEL_TEXT, MAX_JSON_CORRECTION_ATTEMPTS, REWRITE_QUESTIONS_FILENAME } from '../constants';
-import { QuestionData, LogType } from "../types"; 
+import { GoogleGenAI, GenerateContentResponse, Part, Type } from "@google/genai";
+import { GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GEMINI_MODEL_FLASH_LITE, MAX_JSON_CORRECTION_ATTEMPTS, REWRITE_QUESTIONS_FILENAME } from '../constants';
+import { QuestionData, LogType, ThinkingIntensity } from "../types"; 
 
 type AddLogEntryFn = (type: LogType, message: string, details?: any) => void;
 type SetLiveStreamContentFn = (chunk: string, replace?: boolean) => void;
+
+export interface CollectionMetadata {
+    asignatura: string;
+    descripcion: string;
+}
 
 const fileToGenerativePart = async (file: File, addLogEntry: AddLogEntryFn): Promise<Part | { error: string, fileName: string }> => {
   try {
@@ -143,7 +147,7 @@ Si, además de reescribir, decides generar preguntas COMPLETAMENTE NUEVAS (no ba
   "Explicación": "string_or_empty_string" 
 }`;
 
-    return `Eres un asistente experto en crear material de estudio para la plataforma "Questioner Base".
+    return `Eres un asistente experto en crear material de estudio para la plataforma "Haikú".
 Tu tarea es generar preguntas basadas en el contexto y las instrucciones proporcionadas.
 DEBES responder ÚNICAMENTE con un array JSON. Cada objeto en el array representa una pregunta.
 NO incluyas NADA de texto fuera del array JSON (ni introducciones, ni despedidas, ni explicaciones adicionales fuera del JSON).
@@ -176,6 +180,7 @@ Tipos de preguntas y cómo definirlas en JSON:
 -   Pregunta de Selección Múltiple: 'Opción correcta 1' Y TAMBIÉN 'Opción Correcta 2' (y/o 'Opción Correcta 3') tienen valor.
 -   Pregunta de Tipo Verdadero/Falso: Selección única. 'Opción correcta 1' (ej. "Verdadero"), 'Opción Incorrecta 1' (ej. "Falso"). Resto de opciones \`""\`.
 -   Pregunta de Respuesta Escrita: Solo 'Opción correcta 1' tiene valor, que debe ser MUY CORTO (1 a 3 palabras máximo, idealmente solo 1). TODAS las opciones incorrectas DEBEN ser \`""\`.
+-   Pregunta de Tipo Flashcard: Usada para respuestas largas (ensayos, conceptos). SOLO 'Opción Correcta 2' debe tener valor. 'Opción correcta 1', 'Opción Correcta 3' y TODAS las opciones incorrectas DEBEN ser \`""\`.
 
 Conformación de las preguntas y opciones:
 -   Las opciones de respuesta SIEMPRE (a menos que sea la transcripción de preguntas añadidas por el usuario) deben muy breves, centrándose en colocar el nombre de los términos usando entre 1 a 4 palabras.
@@ -241,6 +246,7 @@ export const generateQuestionsFromGemini = async (
   generalContextFiles: File[], 
   requestPrompt: string,
   requestSpecificFiles: File[], 
+  thinkingIntensity: ThinkingIntensity,
   addLogEntry: AddLogEntryFn,
   setLiveStreamContent: SetLiveStreamContentFn,
   existingQuestionsCsv?: string, 
@@ -264,7 +270,7 @@ export const generateQuestionsFromGemini = async (
   // Consolidate files and identify the rewrite file
   const allFilesForProcessing = [...(generalContextFiles || []), ...(requestSpecificFiles || [])];
   const uniqueFilesForProcessing = allFilesForProcessing.filter((file, index, self) => 
-    index === self.findIndex((f) => f.name === file.name && f.lastModified === file.lastModified && f.size === file.size)
+    index === self.findIndex((f) => f.name === file.name && f.lastModified === file.lastModified && f.size === f.size)
   );
 
   const filesForPromptNoticeAndParts: File[] = [];
@@ -310,23 +316,47 @@ export const generateQuestionsFromGemini = async (
   
   const initialContentRequestParts = [...currentParts, { text: initialPromptText }];
 
+  let modelName: string;
+  const modelConfig: { responseMimeType: string; thinkingConfig?: { thinkingBudget: number } } = {
+    responseMimeType: "application/json",
+  };
+
+  switch (thinkingIntensity) {
+    case ThinkingIntensity.Fast:
+      modelName = GEMINI_MODEL_FLASH;
+      modelConfig.thinkingConfig = { thinkingBudget: 0 };
+      addLogEntry(LogType.Info, `Usando modelo ${modelName} (Rápido) con razonamiento deshabilitado.`);
+      break;
+    case ThinkingIntensity.Medium:
+      modelName = GEMINI_MODEL_FLASH_LITE;
+      addLogEntry(LogType.Info, `Usando modelo ${modelName} (Medio) con razonamiento por defecto.`);
+      break;
+    case ThinkingIntensity.VeryHigh:
+      modelName = GEMINI_MODEL_PRO;
+      addLogEntry(LogType.Info, `Usando modelo ${modelName} (Muy Alto) con razonamiento por defecto.`);
+      break;
+    case ThinkingIntensity.High:
+    default:
+      modelName = GEMINI_MODEL_FLASH;
+      addLogEntry(LogType.Info, `Usando modelo ${modelName} (Alto) con razonamiento por defecto.`);
+      break;
+  }
+
   try {
     addLogEntry(LogType.GeminiRequest, `Solicitud inicial (streaming) a Gemini (intento general ${overallAttemptError ? 'con reintento' : '1'})`, { 
+        model: modelName,
         promptLength: initialPromptText.length, 
         filesAttachedAsParts: currentParts.filter(p => !!p.inlineData).length, 
         isRewrite: !!rewriteJsonFileContent,
         existingQuestionsContextProvided: !!existingQuestionsCsv, 
         processedFileErrorMessages,
-        // promptPreview: initialPromptText.substring(0, 500) // Log first 500 chars of prompt
     });
     setLiveStreamContent('', true); 
 
     const responseStream = await ai.models.generateContentStream({
-        model: GEMINI_MODEL_TEXT,
+        model: modelName,
         contents: [{ parts: initialContentRequestParts }],
-        config: {
-             responseMimeType: "application/json",
-        }
+        config: modelConfig,
     });
 
     let aggregatedStreamOutput = "";
@@ -354,7 +384,7 @@ export const generateQuestionsFromGemini = async (
             addLogEntry(LogType.GeminiRequest, `Corrección JSON intento ${jsonCorrectionAttempts + 1}. Error anterior: ${lastJsonErrorForReprompt}`, { promptLength: correctionPromptText.length });
             
             const correctionResponse: GenerateContentResponse = await ai.models.generateContent({
-                model: GEMINI_MODEL_TEXT,
+                model: GEMINI_MODEL_FLASH,
                 contents: [{ parts: [{text: correctionPromptText}] }], 
                 config: { responseMimeType: "application/json" }
             });
@@ -396,10 +426,24 @@ export const generateQuestionsFromGemini = async (
             
             const itemPregunta = item.Pregunta;
             const itemOpcionCorrecta1 = item['Opción correcta 1'];
-            
-            if (typeof itemPregunta !== 'string' || itemPregunta.trim() === '' ||
-                typeof itemOpcionCorrecta1 !== 'string' || itemOpcionCorrecta1.trim() === '') {
-                 throw new Error(`Item ${i} (${itemPregunta ? itemPregunta.substring(0,20) + "..." : "Pregunta Vacía" }) en el array JSON no tiene los campos requeridos 'Pregunta' y 'Opción correcta 1' como strings no vacíos.`);
+            const itemOpcionCorrecta2 = item['Opción Correcta 2'];
+            const itemOpcionCorrecta3 = item['Opción Correcta 3'];
+
+            if (typeof itemPregunta !== 'string' || itemPregunta.trim() === '') {
+                throw new Error(`Item ${i} en el array JSON no tiene el campo requerido 'Pregunta' como un string no vacío.`);
+            }
+
+            const hasAtLeastOneCorrectOption =
+              (typeof itemOpcionCorrecta1 === 'string' && itemOpcionCorrecta1.trim() !== '') ||
+              (typeof itemOpcionCorrecta2 === 'string' && itemOpcionCorrecta2.trim() !== '') ||
+              (typeof itemOpcionCorrecta3 === 'string' && itemOpcionCorrecta3.trim() !== '');
+
+            if (!hasAtLeastOneCorrectOption) {
+              throw new Error(
+                `Item ${i} (${
+                  itemPregunta ? itemPregunta.substring(0, 20) + '...' : 'Pregunta Vacía'
+                }) en el array JSON no tiene ninguna opción correcta con valor ('Opción correcta 1', 'Opción Correcta 2', o 'Opción Correcta 3').`
+              );
             }
             
             const itemExplicacion = (item.Explicación === null || item.Explicación === undefined) ? "" : String(item.Explicación);
@@ -489,7 +533,7 @@ ${sampleQuestionsText}
     try {
         addLogEntry(LogType.GeminiRequest, "Solicitando a Gemini la generación de un título para la colección.", { sampleLength: sampleQuestionsText.length });
         const response: GenerateContentResponse = await ai.models.generateContent({
-            model: GEMINI_MODEL_TEXT,
+            model: GEMINI_MODEL_FLASH,
             contents: prompt,
         });
         
@@ -504,5 +548,77 @@ ${sampleQuestionsText}
         addLogEntry(LogType.Error, "Error al generar título de colección con Gemini.", { error: error.message, sample: sampleQuestionsText });
         console.error("Error generating collection title:", error);
         throw new Error(`Error al generar título de colección: ${error.message}`);
+    }
+};
+
+
+export const generateMetadataFromGemini = async (
+    apiKey: string,
+    sampleQuestionsText: string,
+    addLogEntry: AddLogEntryFn
+): Promise<CollectionMetadata> => {
+    if (!apiKey) {
+        addLogEntry(LogType.Error, "generateMetadataFromGemini: API_KEY no fue proporcionada.");
+        throw new Error("API_KEY no fue proporcionada para generar metadatos.");
+    }
+    if (!sampleQuestionsText || sampleQuestionsText.trim() === "") {
+        addLogEntry(LogType.Warning, "generateMetadataFromGemini: No se proporcionó texto de muestra de preguntas.");
+        return { asignatura: "", descripcion: "" };
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const prompt = `Basado en la siguiente muestra de preguntas, sugiere metadatos para esta colección de estudio.
+
+Reglas:
+1. "asignatura": Sugiere una materia o asignatura académica concisa (ej. "Biología Celular", "Historia del Arte", "Cálculo I").
+2. "descripcion": Genera una descripción breve y atractiva en un solo párrafo que resuma el contenido y propósito de las preguntas.
+
+Muestra de preguntas:
+---
+${sampleQuestionsText}
+---
+
+Responde ÚNICAMENTE con un objeto JSON válido que siga el esquema proporcionado.
+`;
+
+    try {
+        addLogEntry(LogType.GeminiRequest, "Solicitando a Gemini la generación de metadatos (Asignatura, Descripción).", { sampleLength: sampleQuestionsText.length });
+        
+        const response = await ai.models.generateContent({
+            model: GEMINI_MODEL_FLASH,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        asignatura: {
+                            type: Type.STRING,
+                            description: "La asignatura o materia académica sugerida para esta colección de preguntas."
+                        },
+                        descripcion: {
+                            type: Type.STRING,
+                            description: "Una breve descripción contextual sobre el tema que se estará estudiando."
+                        }
+                    }
+                }
+            }
+        });
+
+        const jsonStr = response.text.trim();
+        const parsedMetadata = JSON.parse(jsonStr);
+
+        if (typeof parsedMetadata.asignatura !== 'string' || typeof parsedMetadata.descripcion !== 'string') {
+            throw new Error("La respuesta JSON de metadatos de Gemini no tiene el formato esperado.");
+        }
+
+        addLogEntry(LogType.GeminiResponse, "Metadatos de colección generados por Gemini.", { metadata: parsedMetadata });
+        return parsedMetadata as CollectionMetadata;
+
+    } catch (error: any) {
+        addLogEntry(LogType.Error, "Error al generar metadatos de colección con Gemini.", { error: error.message, sample: sampleQuestionsText });
+        console.error("Error generating collection metadata:", error);
+        throw new Error(`Error al generar metadatos de colección: ${error.message}`);
     }
 };
